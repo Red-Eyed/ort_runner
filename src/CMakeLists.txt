@@ -12,6 +12,7 @@ target_link_libraries(ort_runner PRIVATE
     argparse
     nanobench
     nlohmann_json
+    magic_enum
 )
 
 set_target_properties(ort_runner PROPERTIES

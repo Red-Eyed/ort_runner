@@ -29,6 +29,9 @@ target_include_directories(nanobench INTERFACE third_party/nanobench)
 add_library(nlohmann_json INTERFACE)
 target_include_directories(nlohmann_json INTERFACE third_party/json)
 
+add_library(magic_enum INTERFACE)
+target_include_directories(magic_enum INTERFACE third_party/magic_enum)
+
 add_subdirectory(src)
 
 if(NOT CMAKE_CROSSCOMPILING)

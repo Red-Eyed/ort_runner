@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <iostream>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -33,7 +34,9 @@ int main(int argc, char **argv) {
         double load_time_ms = ElapsedMs(load_start, Clock::now());
 
         auto &session = session_handle.session();
-        auto input_specs = ort_runner::DescribeInputs(session, config->default_dim);
+        auto input_specs =
+            ort_runner::DescribeInputs(session, config->dim_overrides, config->default_dim);
+        ort_runner::WarnUnusedDimOverrides(input_specs, config->dim_overrides);
         auto output_specs = ort_runner::DescribeOutputs(session);
 
         if (config->list_io) {
@@ -43,25 +46,32 @@ int main(int argc, char **argv) {
 
         Ort::MemoryInfo memory_info =
             Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
-        auto inputs =
-            ort_runner::SynthesizeInputs(session, memory_info, config->default_dim,
-                                          config->fill, config->seed, config->int_fill_max);
+        auto inputs = ort_runner::SynthesizeInputs(session, memory_info, config->dim_overrides,
+                                                    config->default_dim, config->fill,
+                                                    config->seed, config->int_fill_max);
 
         std::vector<std::string> output_names;
         output_names.reserve(output_specs.size());
         for (const auto &spec : output_specs) output_names.push_back(spec.name);
 
-        if (config->output_format == ort_runner::OutputFormat::kHuman) {
+        if (config->output_format == ort_runner::OutputFormat::human) {
             ort_runner::PrintPreamble(*config, load_time_ms, input_specs, output_specs);
         }
 
         auto outcome = ort_runner::RunBenchmark(session, inputs, output_names, *config);
 
-        if (config->output_format == ort_runner::OutputFormat::kHuman) {
-            ort_runner::PrintTrailer(outcome.peak_rss_kb);
+        std::optional<std::string> profile_file;
+        if (config->profile) {
+            Ort::AllocatorWithDefaultOptions allocator;
+            auto profile_path = session.EndProfilingAllocated(allocator);
+            profile_file = std::string(profile_path.get());
+        }
+
+        if (config->output_format == ort_runner::OutputFormat::human) {
+            ort_runner::PrintTrailer(outcome.peak_rss_kb, profile_file);
         } else {
             ort_runner::PrintJsonReport(*config, load_time_ms, input_specs, output_specs,
-                                        outcome);
+                                        outcome, profile_file);
         }
     } catch (const Ort::Exception &err) {
         std::cerr << "onnxruntime error: " << err.what() << "\n";

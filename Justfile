@@ -1,9 +1,13 @@
 default:
     @just --list
 
-# Build the native-Linux toolchain image
+# Build the native-Linux toolchain image. Platform is explicit (derived from the host arch)
+# rather than left to podman's default resolution -- observed podman pick up a stale
+# linux/amd64 layer here after the linux/amd64 android image pulled the same debian:12-slim
+# base, silently producing an emulated (not native) image on an arm64 host.
 image-linux:
-    podman build -t ort-runner-builder-linux -f podman/Containerfile.linux podman/
+    podman build --platform "linux/$(uname -m | sed 's/x86_64/amd64/; s/aarch64/arm64/')" \
+        -t ort-runner-builder-linux -f podman/Containerfile.linux podman/
 
 # Build the Android NDK toolchain image. Always targets linux/amd64: the NDK only ships a
 # Linux host toolchain for x86_64, regardless of the arm64-v8a Android target ABI, so this

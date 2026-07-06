@@ -39,7 +39,7 @@ BenchmarkOutcome RunBenchmark(Ort::Session &session, SynthesizedInputs &inputs,
     bench.warmup(config.warmup_iterations);
     bench.minEpochIterations(config.min_epoch_iterations);
 
-    bool json_output = config.output_format == OutputFormat::kJson;
+    bool json_output = config.output_format == OutputFormat::json;
     if (json_output) {
         // Suppress nanobench's automatic console table; we render its JSON template instead
         // and hand it to report.cpp to merge with this tool's own fields.

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <optional>
+#include <string>
 #include <vector>
 
 #include "benchmark.hpp"
@@ -22,13 +24,14 @@ void PrintPreamble(const Config &config, double load_time_ms,
                     const std::vector<OutputSpec> &outputs);
 
 // Human-readable trailer, printed after nanobench has already printed its own table to
-// stdout during RunBenchmark().
-void PrintTrailer(long peak_rss_kb);
+// stdout during RunBenchmark(). profile_file is set only when --profile was passed.
+void PrintTrailer(long peak_rss_kb, const std::optional<std::string> &profile_file);
 
 // Single merged JSON document: nanobench's own rendered JSON plus this tool's fields, since
 // nanobench's JSON template has no way to know about them. The only stdout output in JSON mode.
 void PrintJsonReport(const Config &config, double load_time_ms,
                       const std::vector<InputSpec> &inputs,
-                      const std::vector<OutputSpec> &outputs, const BenchmarkOutcome &outcome);
+                      const std::vector<OutputSpec> &outputs, const BenchmarkOutcome &outcome,
+                      const std::optional<std::string> &profile_file);
 
 }  // namespace ort_runner

@@ -1,6 +1,7 @@
 #include "input_synth.hpp"
 
 #include <algorithm>
+#include <iostream>
 #include <numeric>
 #include <random>
 #include <stdexcept>
@@ -17,11 +18,11 @@ int64_t NumElements(const std::vector<int64_t> &shape) {
 template <typename T>
 void FillBuffer(T *data, int64_t count, FillStrategy fill, std::mt19937_64 &rng,
                 int64_t int_fill_max) {
-    if (fill == FillStrategy::kZeros) {
+    if (fill == FillStrategy::zeros) {
         std::fill_n(data, count, static_cast<T>(0));
         return;
     }
-    if (fill == FillStrategy::kOnes) {
+    if (fill == FillStrategy::ones) {
         std::fill_n(data, count, static_cast<T>(1));
         return;
     }
@@ -54,10 +55,18 @@ Ort::Value MakeTensor(std::vector<std::byte> &storage, const Ort::MemoryInfo &me
 }  // namespace
 
 std::vector<int64_t> ResolveShape(const std::vector<int64_t> &declared_shape,
-                                   int64_t default_dim) {
+                                   const std::vector<std::string> &symbolic_dims,
+                                   const DimOverrides &dim_overrides, int64_t default_dim) {
     std::vector<int64_t> resolved(declared_shape.size());
-    std::transform(declared_shape.begin(), declared_shape.end(), resolved.begin(),
-                    [default_dim](int64_t dim) { return dim > 0 ? dim : default_dim; });
+    for (size_t i = 0; i < declared_shape.size(); ++i) {
+        if (declared_shape[i] > 0) {
+            resolved[i] = declared_shape[i];
+            continue;
+        }
+        const std::string &name = i < symbolic_dims.size() ? symbolic_dims[i] : std::string();
+        auto override_it = name.empty() ? dim_overrides.end() : dim_overrides.find(name);
+        resolved[i] = override_it != dim_overrides.end() ? override_it->second : default_dim;
+    }
     return resolved;
 }
 
@@ -75,7 +84,8 @@ std::string ElementTypeName(ONNXTensorElementDataType type) {
     }
 }
 
-std::vector<InputSpec> DescribeInputs(Ort::Session &session, int64_t default_dim) {
+std::vector<InputSpec> DescribeInputs(Ort::Session &session, const DimOverrides &dim_overrides,
+                                       int64_t default_dim) {
     Ort::AllocatorWithDefaultOptions allocator;
     std::vector<InputSpec> specs;
     size_t count = session.GetInputCount();
@@ -96,11 +106,31 @@ std::vector<InputSpec> DescribeInputs(Ort::Session &session, int64_t default_dim
         InputSpec spec;
         spec.name = std::move(name);
         spec.declared_shape = tensor_info.GetShape();
-        spec.resolved_shape = ResolveShape(spec.declared_shape, default_dim);
+        auto raw_symbolic_dims = tensor_info.GetSymbolicDimensions();
+        spec.symbolic_dims.assign(raw_symbolic_dims.begin(), raw_symbolic_dims.end());
+        spec.resolved_shape =
+            ResolveShape(spec.declared_shape, spec.symbolic_dims, dim_overrides, default_dim);
         spec.element_type = tensor_info.GetElementType();
         specs.push_back(std::move(spec));
     }
     return specs;
+}
+
+void WarnUnusedDimOverrides(const std::vector<InputSpec> &specs,
+                            const DimOverrides &dim_overrides) {
+    std::vector<std::string> seen_names;
+    for (const auto &spec : specs) {
+        for (const auto &name : spec.symbolic_dims) {
+            if (!name.empty()) seen_names.push_back(name);
+        }
+    }
+    for (const auto &[name, value] : dim_overrides) {
+        bool matched = std::find(seen_names.begin(), seen_names.end(), name) != seen_names.end();
+        if (!matched) {
+            std::cerr << "warning: --dim " << name << "=" << value
+                      << " does not match any symbolic dimension name in this model's inputs\n";
+        }
+    }
 }
 
 std::vector<OutputSpec> DescribeOutputs(Ort::Session &session) {
@@ -124,10 +154,10 @@ std::vector<OutputSpec> DescribeOutputs(Ort::Session &session) {
 }
 
 SynthesizedInputs SynthesizeInputs(Ort::Session &session, const Ort::MemoryInfo &memory_info,
-                                    int64_t default_dim, FillStrategy fill, uint64_t seed,
-                                    int64_t int_fill_max) {
+                                    const DimOverrides &dim_overrides, int64_t default_dim,
+                                    FillStrategy fill, uint64_t seed, int64_t int_fill_max) {
     SynthesizedInputs result;
-    result.specs = DescribeInputs(session, default_dim);
+    result.specs = DescribeInputs(session, dim_overrides, default_dim);
 
     result.names.reserve(result.specs.size());
     result.storage.reserve(result.specs.size());
