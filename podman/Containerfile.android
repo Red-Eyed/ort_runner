@@ -1,0 +1,28 @@
+# Toolchain image for cross-compiling ort_runner for Android (arm64-v8a) via the NDK's own
+# CMake toolchain file -- no full Android SDK/sdkmanager/Java needed for a native CLI binary.
+# Does not bake the repo or the ONNX Runtime SDK in -- both are supplied at `podman run` time
+# via a bind mount (see scripts/fetch_onnxruntime.sh and the Justfile's build-android recipe).
+FROM debian:12-slim
+
+ARG NDK_VERSION=r29
+ENV ANDROID_NDK_HOME=/opt/android-ndk-${NDK_VERSION}
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        cmake \
+        ninja-build \
+        curl \
+        ca-certificates \
+        unzip \
+        ccache \
+    && rm -rf /var/lib/apt/lists/*
+
+# Persisted on the host under the bind-mounted workspace (like sdk/ and build-android/), so
+# recompiles across podman run invocations are actually cached instead of starting cold each
+# time -- this matters most here, since NDK clang cross-compiles are the slowest builds.
+ENV CCACHE_DIR=/workspace/.ccache
+
+RUN curl -fL -o /tmp/android-ndk.zip \
+        "https://dl.google.com/android/repository/android-ndk-${NDK_VERSION}-linux.zip" \
+    && unzip -q /tmp/android-ndk.zip -d /opt \
+    && rm /tmp/android-ndk.zip

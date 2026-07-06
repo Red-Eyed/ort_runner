@@ -1,0 +1,48 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": { "major": 3, "minor": 21, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "linux",
+      "displayName": "Native Linux (x86_64)",
+      "binaryDir": "${sourceDir}/build-linux",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_CXX_COMPILER_LAUNCHER": "ccache",
+        "ORT_RUNNER_SDK_DIR": "${sourceDir}/sdk/onnxruntime-linux"
+      }
+    },
+    {
+      "name": "android-arm64",
+      "displayName": "Android arm64-v8a (NDK cross-compile)",
+      "binaryDir": "${sourceDir}/build-android",
+      "toolchainFile": "$env{ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_CXX_COMPILER_LAUNCHER": "ccache",
+        "ANDROID_ABI": "arm64-v8a",
+        "ANDROID_PLATFORM": "android-27",
+        "ANDROID_STL": "c++_static",
+        "ORT_RUNNER_SDK_DIR": "${sourceDir}/sdk/onnxruntime-android-arm64"
+      }
+    },
+    {
+      "name": "android-armeabi-v7a",
+      "displayName": "Android armeabi-v7a (documented, not built by default; out of v1 scope)",
+      "binaryDir": "${sourceDir}/build-android-armeabi-v7a",
+      "toolchainFile": "$env{ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_CXX_COMPILER_LAUNCHER": "ccache",
+        "ANDROID_ABI": "armeabi-v7a",
+        "ANDROID_PLATFORM": "android-27",
+        "ANDROID_STL": "c++_static",
+        "ORT_RUNNER_SDK_DIR": "${sourceDir}/sdk/onnxruntime-android-armeabi-v7a"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "linux", "configurePreset": "linux" },
+    { "name": "android-arm64", "configurePreset": "android-arm64" }
+  ]
+}

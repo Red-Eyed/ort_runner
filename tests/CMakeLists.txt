@@ -1,0 +1,13 @@
+add_executable(ort_runner_tests
+    test_input_synth.cpp
+    ${CMAKE_SOURCE_DIR}/src/input_synth.cpp
+)
+
+target_include_directories(ort_runner_tests PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/third_party/doctest
+)
+
+target_link_libraries(ort_runner_tests PRIVATE onnxruntime::onnxruntime)
+
+add_test(NAME ort_runner_tests COMMAND ort_runner_tests)
