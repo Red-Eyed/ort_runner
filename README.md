@@ -252,3 +252,8 @@ Beyond the basics (`--model`, `--warmup`, `--min-epoch-iterations`, `--fill`, `-
   count that isn't known at all.
 - Loading real input data from files (rather than auto-generating) is a reserved, not yet
   implemented, stretch goal (`--input name=path`).
+
+## License
+
+MIT -- see [LICENSE](LICENSE). Vendored third-party headers keep their own licenses (all MIT;
+see [third_party/README.md](third_party/README.md)).
