@@ -6,9 +6,30 @@ Assumes the image has already been built (see build_image.py).
 from __future__ import annotations
 
 import argparse
+import platform
 import subprocess
+from pathlib import Path
 
 from targets import REPO_ROOT, Target, resolve
+
+
+def _host_integration_args() -> list[str]:
+    """Bind mounts for host integrations that only apply when the host actually has them."""
+    mount_args: list[str] = []
+
+    # Bind-mounting the host's own CA trust store and clock/timezone data lets curl (fetching
+    # the SDK) work on corporate machines behind an intercepting proxy with a self-signed CA.
+    # Linux-only: on macOS these paths belong to the podman-machine VM, not the real host.
+    if platform.system() == "Linux":
+        for host_path in (Path("/etc/ssl/certs"), Path("/etc/localtime"), Path("/etc/timezone")):
+            if host_path.exists():
+                mount_args += ["-v", f"{host_path}:{host_path}:ro"]
+
+    host_ccache_dir = Path.home() / ".ccache"
+    if host_ccache_dir.is_dir():
+        mount_args += ["-v", f"{host_ccache_dir}:/root/.ccache:Z", "-e", "CCACHE_DIR=/root/.ccache"]
+
+    return mount_args
 
 
 def main() -> None:
@@ -23,6 +44,7 @@ def main() -> None:
         [
             "podman", "run", "--rm",
             *platform_args,
+            *_host_integration_args(),
             "-v", f"{REPO_ROOT}:/workspace:Z",
             "-w", "/workspace",
             config.image_tag,
