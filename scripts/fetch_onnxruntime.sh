@@ -38,7 +38,11 @@ case "${target}" in
             url="https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/${asset}"
             echo "Downloading ${url}" >&2
             curl -fL "${url}" -o "${SDK_DIR}/${asset}"
-            tar -xzf "${SDK_DIR}/${asset}" -C "${SDK_DIR}"
+            # The tarball's top-level entry is named after the asset (e.g.
+            # onnxruntime-linux-aarch64-1.27.0/), not "onnxruntime-linux/", so strip it and
+            # extract straight into the fixed dest_dir.
+            mkdir -p "${dest_dir}"
+            tar -xzf "${SDK_DIR}/${asset}" -C "${dest_dir}" --strip-components=1
             rm -f "${SDK_DIR}/${asset}"
         fi
         echo "ORT_RUNNER_SDK_DIR=${dest_dir}"
