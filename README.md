@@ -91,15 +91,30 @@ these are exactly the names `--dim` (below) can target. A dynamic dim with no na
 ```
 $ ort_runner --model model.onnx
 === ort_runner ===
-model:              model.onnx
+timestamp:          2026-07-08T14:32:07Z
+host:               Linux 6.6.87.2-microsoft-standard-WSL2 (x86_64), 8 cores
+model:              model.onnx (4.2 MB)
 ort_version:        1.27.0
 provider:           cpu
 ...
 load_time:          19.146 ms
 
-|               ns/op |                op/s |    err% |     total | ort_runner inference
-|--------------------:|--------------------:|--------:|----------:|:---------------------
-|              849.89 |        1,176,618.02 |    0.5% |      0.01 | `inference`
+benchmark: inference
+  warmup_runs (skipped, unmeasured):  3
+  measured_runs (epochs):             612
+  total_iterations:                   612
+  total_measured_time:                0.521 s
+  throughput:                         1176.62 inferences/sec
+
+  latency_ms:
+    count         612.000
+    mean            0.850
+    std             0.042
+    min             0.781
+    25%             0.821
+    50%             0.847
+    75%             0.876
+    max             1.204
 
 peak_rss:     24924 KB (24.3 MB)
 ```
@@ -133,7 +148,7 @@ ort_runner --model model.onnx --provider nnapi      # Android builds only
 ort_runner --model model.onnx --provider xnnpack    # see the note below
 ```
 
-Compare the `ns/op`/`op/s` line across runs to see which is actually faster for a given model
+Compare the `latency_ms` mean/`throughput` lines across runs to see which is actually faster for a given model
 on a given device -- there's no universal winner. Note: `xnnpack` is implemented correctly but
 throws `XNNPACK execution provider is not supported in this build` against the official
 prebuilt ONNX Runtime packages this tool fetches by default (see Configuration below for why);
