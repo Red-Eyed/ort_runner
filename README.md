@@ -45,7 +45,7 @@ slower than a native x86_64 host.
 just run-linux path/to/model.onnx
 
 # Android: pushes the binary + libonnxruntime.so to a connected device/emulator and runs it
-just push-android path/to/model.onnx
+just run-android path/to/model.onnx
 ```
 
 Or invoke `ort_runner` directly once built:
@@ -188,7 +188,7 @@ own fields with nanobench's own per-epoch measurements under `.benchmark`.
 
 ```bash
 adb devices                    # confirm a device/emulator is connected first
-just push-android model.onnx -- --dim H=32 --dim W=32 --provider nnapi
+just run-android model.onnx -- --dim H=32 --dim W=32 --provider nnapi
 ```
 
 This builds (if needed), pushes the binary + `libonnxruntime.so` to `/data/local/tmp/`, and
