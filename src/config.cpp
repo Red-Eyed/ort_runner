@@ -77,22 +77,23 @@ std::optional<Config> ParseArgs(int argc, const char *const argv[]) {
         .default_value(std::string{"sequential"})
         .choices("sequential", "parallel")
         .help("ORT graph execution mode; parallel only helps multi-branch graphs with "
-              "inter-op-threads > 1");
+              "inter-op-threads > 1 (choices: sequential, parallel)");
 
     program.add_argument("--intra-op-spinning")
         .choices("on", "off")
         .help("allow intra-op threads to spin instead of sleep; left at onnxruntime's own "
-              "default if not passed");
+              "default if not passed (choices: on, off)");
 
     program.add_argument("--inter-op-spinning")
         .choices("on", "off")
         .help("allow inter-op threads to spin instead of sleep; left at onnxruntime's own "
-              "default if not passed");
+              "default if not passed (choices: on, off)");
 
     program.add_argument("--provider")
         .default_value(std::string{"cpu"})
         .choices("cpu", "nnapi", "xnnpack")
-        .help("execution provider; 'nnapi' is only valid in Android builds");
+        .help("execution provider; 'nnapi' is only valid in Android builds "
+              "(choices: cpu, nnapi, xnnpack)");
 
     program.add_argument("--default-dim")
         .default_value(int64_t{1})
@@ -108,7 +109,7 @@ std::optional<Config> ParseArgs(int argc, const char *const argv[]) {
     program.add_argument("--fill")
         .default_value(std::string{"random"})
         .choices("random", "ones", "zeros")
-        .help("input tensor fill strategy");
+        .help("input tensor fill strategy (choices: random, ones, zeros)");
 
     program.add_argument("--seed")
         .default_value(uint64_t{42})
@@ -124,7 +125,7 @@ std::optional<Config> ParseArgs(int argc, const char *const argv[]) {
     program.add_argument("--output-format")
         .default_value(std::string{"human"})
         .choices("human", "json")
-        .help("human-readable text, or a single merged JSON document");
+        .help("human-readable text, or a single merged JSON document (choices: human, json)");
 
     program.add_argument("--list-io")
         .flag()
@@ -143,7 +144,8 @@ std::optional<Config> ParseArgs(int argc, const char *const argv[]) {
     program.add_argument("--graph-optimization-level")
         .default_value(std::string{"all"})
         .choices("disable", "basic", "extended", "layout", "all")
-        .help("onnxruntime graph optimization level");
+        .help("onnxruntime graph optimization level "
+              "(choices: disable, basic, extended, layout, all)");
 
     program.add_argument("--disable-cpu-arena")
         .flag()
@@ -160,7 +162,8 @@ std::optional<Config> ParseArgs(int argc, const char *const argv[]) {
     program.add_argument("--log-severity")
         .default_value(std::string{"warning"})
         .choices("verbose", "info", "warning", "error", "fatal")
-        .help("onnxruntime session log severity level");
+        .help("onnxruntime session log severity level "
+              "(choices: verbose, info, warning, error, fatal)");
 
     try {
         program.parse_args(argc, argv);
