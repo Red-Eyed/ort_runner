@@ -20,7 +20,7 @@ build-android: image-android
 
 # Run the native Linux build's unit tests
 test-linux: build-linux
-    build-linux/tests/ort_runner_tests
+    scripts/test_linux.py
 
 # Run the native Linux build locally against a model
 run-linux model *args: build-linux

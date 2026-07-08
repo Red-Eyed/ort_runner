@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
-"""Runs the native Linux build locally against a model."""
+"""Runs the native Linux build against a model."""
 from __future__ import annotations
 
 import argparse
-import os
-import subprocess
 
-from targets import REPO_ROOT
+from targets import Target, run_target_binary
 
 
 def main() -> None:
@@ -15,12 +13,8 @@ def main() -> None:
     parser.add_argument("args", nargs=argparse.REMAINDER)
     args = parser.parse_args()
 
-    build_dir = REPO_ROOT / "build-linux"
-    env = os.environ | {"LD_LIBRARY_PATH": str(build_dir / "bin")}
-    subprocess.run(
-        [str(build_dir / "bin" / "ort_runner"), "--model", args.model, *args.args],
-        check=True,
-        env=env,
+    run_target_binary(
+        Target.LINUX, ["build-linux/bin/ort_runner", "--model", args.model, *args.args]
     )
 
 

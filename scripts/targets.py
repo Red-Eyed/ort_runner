@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import platform
+import subprocess
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -63,3 +64,34 @@ def resolve(target: Target) -> TargetConfig:
             build_dir=REPO_ROOT / "build-android",
         )
     raise ValueError(f"Unknown target: {target}")
+
+
+def podman_exec(target: Target, command: list[str]) -> None:
+    """Runs `command` inside `target`'s already-built podman toolchain image, repo mounted at
+    /workspace. Lets build outputs run on hosts (e.g. macOS) that can't execute the target's
+    binaries directly -- the build image always can, since it's what built them."""
+    config = resolve(target)
+    subprocess.run(
+        [
+            "podman", "run", "--rm",
+            "-v", f"{REPO_ROOT}:/workspace:Z",
+            "-w", "/workspace",
+            config.image_tag,
+            *command,
+        ],
+        check=True,
+    )
+
+
+def run_target_binary(target: Target, command: list[str]) -> None:
+    """Runs `command` (paths relative to the repo root) against a target's built binaries.
+
+    On a native Linux host, the podman container shares the host kernel, so binaries built
+    inside it run directly on the host too -- no need to pay the container-start overhead on
+    every invocation. Elsewhere (e.g. macOS, where the build happens inside a Linux VM) the
+    host can't execute them directly, so this falls back to podman_exec.
+    """
+    if platform.system() == "Linux":
+        subprocess.run(command, check=True, cwd=REPO_ROOT)
+    else:
+        podman_exec(target, command)

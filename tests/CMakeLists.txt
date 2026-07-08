@@ -10,4 +10,6 @@ target_include_directories(ort_runner_tests PRIVATE
 
 target_link_libraries(ort_runner_tests PRIVATE onnxruntime::onnxruntime)
 
+ort_runner_bundle_onnxruntime(ort_runner_tests)
+
 add_test(NAME ort_runner_tests COMMAND ort_runner_tests)

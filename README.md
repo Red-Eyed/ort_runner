@@ -48,10 +48,13 @@ just run-linux path/to/model.onnx
 just run-android path/to/model.onnx
 ```
 
-Or invoke `ort_runner` directly once built:
+`build-linux/bin/` is self-contained (the binary carries a `$ORIGIN`-relative rpath to the
+`libonnxruntime.so.1` copied beside it), so on a native Linux host you can also invoke it
+directly, or copy `build-linux/bin/` elsewhere and run it from there, without
+`LD_LIBRARY_PATH`:
 
 ```bash
-LD_LIBRARY_PATH=build-linux/bin build-linux/bin/ort_runner --model path/to/model.onnx
+build-linux/bin/ort_runner --model path/to/model.onnx
 ```
 
 Inspect a model's declared inputs/outputs without running inference:
