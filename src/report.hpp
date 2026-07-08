@@ -23,8 +23,12 @@ void PrintPreamble(const Config &config, double load_time_ms,
                     const std::vector<InputSpec> &inputs,
                     const std::vector<OutputSpec> &outputs);
 
-// Human-readable trailer, printed after nanobench has already printed its own table to
-// stdout during RunBenchmark(). profile_file is set only when --profile was passed.
+// Human-readable summary of the benchmark run: warmup/measured run counts and a
+// pandas-df.describe()-style breakdown of per-epoch latency (ms).
+void PrintBenchmarkSummary(const BenchmarkStats &stats);
+
+// Human-readable trailer, printed after PrintBenchmarkSummary(). profile_file is set only
+// when --profile was passed.
 void PrintTrailer(long peak_rss_kb, const std::optional<std::string> &profile_file);
 
 // Single merged JSON document: nanobench's own rendered JSON plus this tool's fields, since

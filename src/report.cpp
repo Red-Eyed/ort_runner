@@ -2,10 +2,15 @@
 
 #include <onnxruntime_cxx_api.h>
 #include <json.hpp>
+#include <sys/utsname.h>
 
+#include <chrono>
+#include <ctime>
+#include <filesystem>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
+#include <thread>
 
 #include "enum_utils.hpp"
 
@@ -62,6 +67,45 @@ std::string ArenaPatternToString(const Config &config) {
     return out.str();
 }
 
+std::string CurrentUtcTimestamp() {
+    std::time_t now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    std::tm utc_tm{};
+    gmtime_r(&now, &utc_tm);
+    char buf[32];
+    std::strftime(buf, sizeof(buf), "%Y-%m-%dT%H:%M:%SZ", &utc_tm);
+    return std::string(buf);
+}
+
+struct HostInfo {
+    std::string os_name;
+    std::string os_release;
+    std::string arch;
+    unsigned int cpu_cores;
+};
+
+HostInfo CollectHostInfo() {
+    struct utsname info {};
+    uname(&info);
+    return HostInfo{info.sysname, info.release, info.machine,
+                     std::thread::hardware_concurrency()};
+}
+
+std::string FormatHostInfo(const HostInfo &host) {
+    std::ostringstream out;
+    out << host.os_name << " " << host.os_release << " (" << host.arch << "), " << host.cpu_cores
+        << " cores";
+    return out.str();
+}
+
+// The model was already loaded successfully by the time any report is printed, so the file is
+// known to exist; std::error_code just avoids an exception for the display-only size lookup.
+std::optional<uintmax_t> ModelFileSizeBytes(const std::string &model_path) {
+    std::error_code ec;
+    auto size = std::filesystem::file_size(model_path, ec);
+    if (ec) return std::nullopt;
+    return size;
+}
+
 }  // namespace
 
 void PrintIoDescription(const std::vector<InputSpec> &inputs,
@@ -83,7 +127,14 @@ void PrintPreamble(const Config &config, double load_time_ms,
                     const std::vector<InputSpec> &inputs,
                     const std::vector<OutputSpec> &outputs) {
     std::cout << "=== ort_runner ===\n";
-    std::cout << "model:              " << config.model_path << "\n";
+    std::cout << "timestamp:          " << CurrentUtcTimestamp() << "\n";
+    std::cout << "host:               " << FormatHostInfo(CollectHostInfo()) << "\n";
+    std::cout << "model:              " << config.model_path;
+    if (auto size_bytes = ModelFileSizeBytes(config.model_path)) {
+        std::cout << " (" << std::fixed << std::setprecision(1)
+                   << (static_cast<double>(*size_bytes) / (1024.0 * 1024.0)) << " MB)";
+    }
+    std::cout << "\n";
     std::cout << "ort_version:        " << Ort::GetVersionString() << "\n";
     std::cout << "provider:           " << ToString(config.provider) << "\n";
     std::cout << "threads:            " << ThreadsToString(config) << "\n";
@@ -114,6 +165,32 @@ void PrintPreamble(const Config &config, double load_time_ms,
                    << " dtype=" << ElementTypeName(spec.element_type) << "\n";
     }
     std::cout << "\n";
+}
+
+void PrintBenchmarkSummary(const BenchmarkStats &stats) {
+    std::cout << "\nbenchmark: inference\n";
+    std::cout << "  warmup_runs (skipped, unmeasured):  " << stats.warmup_iterations << "\n";
+    std::cout << "  measured_runs (epochs):             " << stats.measured_epochs << "\n";
+    std::cout << "  total_iterations:                   " << stats.total_iterations << "\n";
+    std::cout << "  total_measured_time:                " << std::fixed
+               << std::setprecision(3) << stats.total_measured_time_s << " s\n";
+    std::cout << "  throughput:                         " << std::setprecision(2)
+               << stats.throughput_ops_per_sec << " inferences/sec\n";
+
+    std::cout << "\n  latency_ms:\n";
+    auto print_stat = [](const char *label, double value) {
+        std::cout << "    " << std::left << std::setw(8) << label << std::right << std::fixed
+                   << std::setprecision(3) << std::setw(12) << value << "\n";
+    };
+    const auto &d = stats.latency_ms;
+    print_stat("count", static_cast<double>(d.count));
+    print_stat("mean", d.mean);
+    print_stat("std", d.stddev);
+    print_stat("min", d.min);
+    print_stat("25%", d.p25);
+    print_stat("50%", d.median);
+    print_stat("75%", d.p75);
+    print_stat("max", d.max);
 }
 
 void PrintTrailer(long peak_rss_kb, const std::optional<std::string> &profile_file) {
@@ -154,8 +231,19 @@ void PrintJsonReport(const Config &config, double load_time_ms,
         dim_overrides_json[name] = value;
     }
 
+    HostInfo host = CollectHostInfo();
+
     nlohmann::json report;
+    report["timestamp"] = CurrentUtcTimestamp();
+    report["host"] = {
+        {"os", host.os_name + " " + host.os_release},
+        {"arch", host.arch},
+        {"cpu_cores", host.cpu_cores},
+    };
     report["model_path"] = config.model_path;
+    auto model_size_bytes = ModelFileSizeBytes(config.model_path);
+    report["model_size_bytes"] =
+        model_size_bytes.has_value() ? nlohmann::json(*model_size_bytes) : nlohmann::json(nullptr);
     report["ort_version"] = Ort::GetVersionString();
     report["provider"] = ToString(config.provider);
     report["intra_op_threads"] = config.intra_op_threads.has_value()

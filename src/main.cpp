@@ -68,6 +68,7 @@ int main(int argc, char **argv) {
         }
 
         if (config->output_format == ort_runner::OutputFormat::human) {
+            ort_runner::PrintBenchmarkSummary(outcome.stats);
             ort_runner::PrintTrailer(outcome.peak_rss_kb, profile_file);
         } else {
             ort_runner::PrintJsonReport(*config, load_time_ms, input_specs, output_specs,
