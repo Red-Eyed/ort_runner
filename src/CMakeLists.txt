@@ -1,3 +1,9 @@
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/version.hpp.in
+    ${CMAKE_BINARY_DIR}/generated/version.hpp
+    @ONLY
+)
+
 add_executable(ort_runner
     main.cpp
     config.cpp
@@ -6,6 +12,8 @@ add_executable(ort_runner
     benchmark.cpp
     report.cpp
 )
+
+target_include_directories(ort_runner PRIVATE ${CMAKE_BINARY_DIR}/generated)
 
 target_link_libraries(ort_runner PRIVATE
     onnxruntime::onnxruntime

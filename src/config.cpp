@@ -6,13 +6,15 @@
 #include <iostream>
 
 #include "enum_utils.hpp"
+#include "version.hpp"
 
 namespace ort_runner {
 
 namespace {
 
 std::string VersionString() {
-    return "ort_runner 0.1.0 (onnxruntime " + Ort::GetVersionString() + ")";
+    return "ort_runner " + std::string(kOrtRunnerVersion) + " (onnxruntime " +
+           Ort::GetVersionString() + ")";
 }
 
 // Parses repeated "--dim name=value" entries into a DimOverrides map. Returns false (and
