@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build native Linux target
+        uses: ./.github/actions/build-target
+        with:
+          target: linux
+
+      - name: Run unit tests
+        run: scripts/test_linux.py
+
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Compile-only: CI has no Android device/emulator to run the tests on.
+      - name: Cross-compile Android target
+        uses: ./.github/actions/build-target
+        with:
+          target: android
