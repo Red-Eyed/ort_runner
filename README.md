@@ -31,9 +31,11 @@ just build-android    # cross-compiled Android arm64-v8a, into build-android/
 
 Each target fetches its own pinned ONNX Runtime distribution on first build (cached on the
 host under `sdk/`, gitignored) via `scripts/fetch_onnxruntime.sh`. Compiles are cached via
-`ccache`, persisted on the host under `.ccache/` across `podman run` invocations.
+`ccache`: if a `~/.ccache` directory exists on the host it is bind-mounted into the build
+container and reused across `podman run` invocations (run `mkdir ~/.ccache` once to enable it;
+without it, each build starts cold).
 
-The Android toolchain image always targets `linux/amd64` (see the Justfile) regardless of the
+The Android toolchain image always targets `linux/amd64` (see `scripts/targets.py`) regardless of the
 build host's own architecture: the NDK only ships a Linux **host** toolchain for x86_64, so on
 an arm64 host (e.g. Apple Silicon) it runs under QEMU emulation -- confirmed working, just
 slower than a native x86_64 host.
