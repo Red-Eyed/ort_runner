@@ -1,0 +1,27 @@
+# This is NOT a Python package -- ort_runner is a C++ project. This file exists only to give the
+# repo's host-side Python (the build/run scripts in scripts/ and the demo in examples/) a single
+# home for tooling config and dev dependencies, so `uv run ruff`/`uv run pyrefly` are consistent.
+[project]
+name = "ort-runner-tooling"
+version = "0"
+description = "Host-side build/run scripts and examples for the ort_runner C++ project. Not a package."
+requires-python = ">=3.9"
+
+[tool.uv]
+# Never build/install this project itself; there is nothing to package.
+package = false
+
+[dependency-groups]
+dev = ["ruff", "pyrefly"]
+# Runtime deps of examples/load_inputs/make_demo.py. Also declared inline (PEP 723) in that
+# script so `uv run make_demo.py` works standalone; duplicated here so the tooling env can
+# resolve them for type-checking (`uv run --group examples pyrefly check examples/`).
+examples = ["numpy", "onnx"]
+
+[tool.ruff]
+# 100 matches the C++ side and the scripts' existing convention.
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
