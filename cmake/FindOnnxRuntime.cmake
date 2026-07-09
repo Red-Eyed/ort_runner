@@ -40,7 +40,9 @@ set_target_properties(onnxruntime::onnxruntime PROPERTIES
 # library (under its real SONAME-based filename, via IMPORTED_LOCATION above) beside the
 # target's output, and points its RPATH at "$ORIGIN" instead of the SDK's build-tree location.
 # That keeps build-*/bin self-contained -- directly adb-pushable or runnable in place from any
-# directory -- without needing LD_LIBRARY_PATH or the sdk/ directory around.
+# directory -- without needing the sdk/ directory around. On desktop Linux the "$ORIGIN" RPATH
+# also removes the need for LD_LIBRARY_PATH; Android's linker ignores it, so scripts/run_android.py
+# still sets LD_LIBRARY_PATH when launching on-device.
 function(ort_runner_bundle_onnxruntime target)
     set_target_properties(${target} PROPERTIES
         BUILD_WITH_INSTALL_RPATH TRUE

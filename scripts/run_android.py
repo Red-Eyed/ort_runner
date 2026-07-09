@@ -68,8 +68,11 @@ def main() -> None:
     device_model = push_host_file(model)
     device_args = [to_device_arg(arg) for arg in args.args]
 
-    tokens = [f"{DEVICE_DIR}/ort_runner", "--model", device_model, *device_args]
-    subprocess.run(["adb", "shell", shlex.join(tokens)], check=True)
+    # Android's linker ignores the binary's $ORIGIN RUNPATH, so libonnxruntime.so
+    # (pushed alongside ort_runner in DEVICE_DIR) is only found via LD_LIBRARY_PATH.
+    command = [f"{DEVICE_DIR}/ort_runner", "--model", device_model, *device_args]
+    remote_command = f"LD_LIBRARY_PATH={DEVICE_DIR} {shlex.join(command)}"
+    subprocess.run(["adb", "shell", remote_command], check=True)
 
 
 if __name__ == "__main__":
