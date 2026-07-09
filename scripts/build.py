@@ -25,9 +25,11 @@ def _host_integration_args() -> list[str]:
             if host_path.exists():
                 mount_args += ["-v", f"{host_path}:{host_path}:ro"]
 
+    # Created up front so the very first build already gets a persistent cache; ccache reuse
+    # shouldn't depend on the host happening to have this directory already.
     host_ccache_dir = Path.home() / ".ccache"
-    if host_ccache_dir.is_dir():
-        mount_args += ["-v", f"{host_ccache_dir}:/root/.ccache:Z", "-e", "CCACHE_DIR=/root/.ccache"]
+    host_ccache_dir.mkdir(parents=True, exist_ok=True)
+    mount_args += ["-v", f"{host_ccache_dir}:/root/.ccache:Z", "-e", "CCACHE_DIR=/root/.ccache"]
 
     return mount_args
 
