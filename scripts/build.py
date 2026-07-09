@@ -3,6 +3,7 @@
 
 Assumes the image has already been built (see build_image.py).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -17,8 +18,9 @@ def _host_integration_args() -> list[str]:
     """Bind mounts for host integrations that only apply when the host actually has them."""
     mount_args: list[str] = []
 
-    # Bind-mounting the host's own CA trust store and clock/timezone data lets curl (fetching
-    # the SDK) work on corporate machines behind an intercepting proxy with a self-signed CA.
+    # Bind-mounting the host's own CA trust store and clock/timezone data lets the in-container
+    # SDK download (fetch_onnxruntime.py, which uses the container's OpenSSL CA paths) work on
+    # corporate machines behind an intercepting proxy with a self-signed CA.
     # Linux-only: on macOS these paths belong to the podman-machine VM, not the real host.
     if platform.system() == "Linux":
         for host_path in (Path("/etc/ssl/certs"), Path("/etc/localtime"), Path("/etc/timezone")):
@@ -44,14 +46,19 @@ def main() -> None:
     build_dir_name = config.build_dir.name
     subprocess.run(
         [
-            "podman", "run", "--rm",
+            "podman",
+            "run",
+            "--rm",
             *platform_args,
             *_host_integration_args(),
-            "-v", f"{REPO_ROOT}:/workspace:Z",
-            "-w", "/workspace",
+            "-v",
+            f"{REPO_ROOT}:/workspace:Z",
+            "-w",
+            "/workspace",
             config.image_tag,
-            "bash", "-c",
-            f"scripts/fetch_onnxruntime.sh {config.fetch_arg} "
+            "bash",
+            "-c",
+            f"python3 scripts/fetch_onnxruntime.py {args.target} "
             f"&& cmake --preset {config.cmake_preset} -B {build_dir_name} "
             f"&& cmake --build {build_dir_name} -j",
         ],

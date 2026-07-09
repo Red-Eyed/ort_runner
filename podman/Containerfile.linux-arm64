@@ -1,0 +1,32 @@
+# Toolchain image for building ort_runner for Linux aarch64. Based on debian bullseye
+# (glibc 2.31) rather than bookworm so the resulting binary links against an older glibc and
+# therefore runs on any newer-glibc aarch64 device -- e.g. a Raspberry Pi 4 whether it runs
+# 64-bit RPi OS Bullseye (glibc 2.31) or Bookworm (glibc 2.36) -- without a "GLIBC_x.xx not
+# found" mismatch. The prebuilt onnxruntime-linux-aarch64 .so only needs glibc 2.27, so bullseye
+# stays above that floor while going old enough to cover fielded Pis.
+#
+# On an arm64 host/Podman VM (e.g. Apple Silicon) this builds natively; on an x86_64 host it
+# builds under QEMU emulation. Either way only ort_runner's own handful of .cpp files compile
+# here -- ONNX Runtime is the prebuilt .so -- so the emulated path is still quick.
+#
+# Does not bake the repo or the ONNX Runtime SDK in -- both are supplied at `podman run` time
+# via a bind mount (see scripts/fetch_onnxruntime.py and the Justfile's build-linux-aarch64 recipe).
+FROM arm64v8/debian:bullseye-slim
+
+# cmake and ninja come from PyPI (into an isolated venv) rather than apt: bullseye's apt cmake is
+# 3.18, but CMakePresets.json (schema v6) needs cmake >= 3.25. This matches how the other target
+# images get cmake, so every image uses the same modern cmake. python3 also runs the fetch script.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        python3 \
+        python3-venv \
+        ccache \
+    && rm -rf /var/lib/apt/lists/* \
+    && python3 -m venv /opt/pytools \
+    && /opt/pytools/bin/pip install --no-cache-dir cmake ninja
+ENV PATH="/opt/pytools/bin:${PATH}"
+
+# Persisted on the host under the bind-mounted workspace (like sdk/ and build-linux-aarch64/),
+# so recompiles across podman run invocations are cached instead of starting cold each time.
+ENV CCACHE_DIR=/workspace/.ccache

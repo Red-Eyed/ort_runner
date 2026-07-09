@@ -1,12 +1,26 @@
 #!/usr/bin/env python3
-"""Runs the native Linux build's unit tests."""
+"""Runs a Linux build's unit tests (defaults to the x86_64 build)."""
+
 from __future__ import annotations
 
-from targets import Target, run_target_binary
+import argparse
+
+from targets import Target, resolve, run_target_binary
 
 
 def main() -> None:
-    run_target_binary(Target.LINUX, ["build-linux/tests/ort_runner_tests"])
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "target",
+        type=Target,
+        choices=[Target.LINUX_X64, Target.LINUX_ARM64],
+        nargs="?",
+        default=Target.LINUX_X64,
+    )
+    args = parser.parse_args()
+
+    config = resolve(args.target)
+    run_target_binary(args.target, [f"{config.build_dir.name}/tests/ort_runner_tests"])
 
 
 if __name__ == "__main__":

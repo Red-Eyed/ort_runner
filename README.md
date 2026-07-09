@@ -25,14 +25,23 @@ Requires [Podman](https://podman.io/); no local C++ toolchain or Android NDK nee
 build environments are containerized.
 
 ```bash
-just build-linux      # native Linux (x86_64), into build-linux/
-just build-android    # cross-compiled Android arm64-v8a, into build-android/
+just build-linux-x64        # Linux x86_64, into build-linux-x64/
+just build-linux-aarch64    # Linux aarch64 (e.g. Raspberry Pi 4), into build-linux-aarch64/
+just build-android-arm64    # Android arm64-v8a, into build-android-arm64/
+just build-android-armv7    # Android armeabi-v7a (hardfloat), into build-android-armv7/
 ```
 
 Each target fetches its own pinned ONNX Runtime distribution on first build (cached on the
-host under `sdk/`, gitignored) via `scripts/fetch_onnxruntime.sh`. Compiles are cached via
-`ccache`, persisted across `podman run` invocations in `~/.ccache` on the host (created
-automatically on the first build).
+host under `sdk/`, gitignored) via `scripts/fetch_onnxruntime.py` -- always the official
+prebuilt binaries (Linux release tarballs; the shared libs from the Android AAR); ONNX Runtime
+itself is never built from source. Compiles are cached via `ccache`, persisted across
+`podman run` invocations in `~/.ccache` on the host (created automatically on the first build).
+
+The `linux-aarch64` image is based on an older glibc (debian bullseye, glibc 2.31) so the
+binary runs on any newer-glibc aarch64 device -- e.g. a Raspberry Pi 4 on 64-bit RPi OS
+(Bullseye or Bookworm) -- without a "GLIBC_x.xx not found" mismatch, and it statically links
+libstdc++/libgcc so only glibc is a runtime dependency. On an arm64 host (Apple Silicon) it
+builds natively; on x86_64 under QEMU emulation.
 
 The Android toolchain image always targets `linux/amd64` (see `scripts/targets.py`) regardless of the
 build host's own architecture: the NDK only ships a Linux **host** toolchain for x86_64, so on
@@ -42,20 +51,22 @@ slower than a native x86_64 host.
 ## Run
 
 ```bash
-# Native Linux
-just run-linux path/to/model.onnx
+# Linux (pick the arch; aarch64 runs under emulation on a non-arm64 host)
+just run-linux-x64 path/to/model.onnx
+just run-linux-aarch64 path/to/model.onnx
 
 # Android: pushes the binary + libonnxruntime.so to a connected device/emulator and runs it
-just run-android path/to/model.onnx
+just run-android-arm64 path/to/model.onnx
+just run-android-armv7 path/to/model.onnx
 ```
 
-`build-linux/bin/` is self-contained (the binary carries a `$ORIGIN`-relative rpath to the
-`libonnxruntime.so.1` copied beside it), so on a native Linux host you can also invoke it
-directly, or copy `build-linux/bin/` elsewhere and run it from there, without
+Each `build-<target>/bin/` is self-contained (the binary carries a `$ORIGIN`-relative rpath to
+the `libonnxruntime.so.1` copied beside it), so on a matching-arch Linux host you can also
+invoke it directly, or copy `build-<target>/bin/` elsewhere and run it from there, without
 `LD_LIBRARY_PATH`:
 
 ```bash
-build-linux/bin/ort_runner --model path/to/model.onnx
+build-linux-x64/bin/ort_runner --model path/to/model.onnx
 ```
 
 Inspect a model's declared inputs/outputs without running inference:

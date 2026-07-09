@@ -9,7 +9,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from targets import REPO_ROOT
+from targets import Target, resolve
 
 DEVICE_DIR = "/data/local/tmp"
 
@@ -42,6 +42,7 @@ def to_device_arg(arg: str) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("target", type=Target, choices=[Target.ANDROID_ARM64, Target.ANDROID_ARM32])
     parser.add_argument("model")
     parser.add_argument("args", nargs=argparse.REMAINDER)
     args = parser.parse_args()
@@ -49,7 +50,7 @@ def main() -> None:
     if shutil.which("adb") is None:
         raise SystemExit("error: adb not found on PATH; install Android platform-tools")
 
-    bin_dir = REPO_ROOT / "build-android" / "bin"
+    bin_dir = resolve(args.target).build_dir / "bin"
     runner = require_file(
         bin_dir / "ort_runner", "ort_runner binary (build the android target first)"
     )
@@ -61,9 +62,7 @@ def main() -> None:
 
     push(runner, f"{DEVICE_DIR}/ort_runner")
     push(libort, f"{DEVICE_DIR}/libonnxruntime.so")
-    subprocess.run(
-        ["adb", "shell", "chmod", "+x", f"{DEVICE_DIR}/ort_runner"], check=True
-    )
+    subprocess.run(["adb", "shell", "chmod", "+x", f"{DEVICE_DIR}/ort_runner"], check=True)
 
     device_model = push_host_file(model)
     device_args = [to_device_arg(arg) for arg in args.args]
@@ -79,6 +78,4 @@ if __name__ == "__main__":
     try:
         main()
     except subprocess.CalledProcessError as exc:
-        raise SystemExit(
-            f"error: command failed (exit {exc.returncode}): {shlex.join(exc.cmd)}"
-        )
+        raise SystemExit(f"error: command failed (exit {exc.returncode}): {shlex.join(exc.cmd)}")

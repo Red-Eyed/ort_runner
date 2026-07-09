@@ -1,21 +1,32 @@
 {
   "version": 6,
-  "cmakeMinimumRequired": { "major": 3, "minor": 21, "patch": 0 },
+  "cmakeMinimumRequired": { "major": 3, "minor": 25, "patch": 0 },
   "configurePresets": [
     {
-      "name": "linux",
-      "displayName": "Native Linux (x86_64)",
-      "binaryDir": "${sourceDir}/build-linux",
+      "name": "linux-x64",
+      "displayName": "Linux x86_64",
+      "binaryDir": "${sourceDir}/build-linux-x64",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "CMAKE_CXX_COMPILER_LAUNCHER": "ccache",
-        "ORT_RUNNER_SDK_DIR": "${sourceDir}/sdk/onnxruntime-linux"
+        "ORT_RUNNER_SDK_DIR": "${sourceDir}/sdk/onnxruntime-linux-x64"
+      }
+    },
+    {
+      "name": "linux-aarch64",
+      "displayName": "Linux aarch64 (old-glibc baseline, e.g. Raspberry Pi 4)",
+      "binaryDir": "${sourceDir}/build-linux-aarch64",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_CXX_COMPILER_LAUNCHER": "ccache",
+        "ORT_RUNNER_SDK_DIR": "${sourceDir}/sdk/onnxruntime-linux-aarch64",
+        "CMAKE_EXE_LINKER_FLAGS": "-static-libstdc++ -static-libgcc"
       }
     },
     {
       "name": "android-arm64",
       "displayName": "Android arm64-v8a (NDK cross-compile)",
-      "binaryDir": "${sourceDir}/build-android",
+      "binaryDir": "${sourceDir}/build-android-arm64",
       "toolchainFile": "$env{ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
@@ -28,8 +39,8 @@
     },
     {
       "name": "android-armeabi-v7a",
-      "displayName": "Android armeabi-v7a (documented, not built by default; out of v1 scope)",
-      "binaryDir": "${sourceDir}/build-android-armeabi-v7a",
+      "displayName": "Android armeabi-v7a (hardfloat, NDK cross-compile)",
+      "binaryDir": "${sourceDir}/build-android-armv7",
       "toolchainFile": "$env{ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
@@ -42,7 +53,9 @@
     }
   ],
   "buildPresets": [
-    { "name": "linux", "configurePreset": "linux" },
-    { "name": "android-arm64", "configurePreset": "android-arm64" }
+    { "name": "linux-x64", "configurePreset": "linux-x64" },
+    { "name": "linux-aarch64", "configurePreset": "linux-aarch64" },
+    { "name": "android-arm64", "configurePreset": "android-arm64" },
+    { "name": "android-armeabi-v7a", "configurePreset": "android-armeabi-v7a" }
   ]
 }

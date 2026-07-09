@@ -1,5 +1,6 @@
 /sdk/
 /build-*/
+/dist/
 /.ccache/
 __pycache__/
 /.venv/
