@@ -55,6 +55,11 @@ std::optional<Config> ParseArgs(int argc, const char *const argv[]) {
 
     program.add_argument("--model").required().help("path to the .onnx model file");
 
+    program.add_argument("--inputs")
+        .help("path to a .npz of named input arrays (numpy.savez); array names must match model "
+              "input names. Inputs not present in the archive are synthesized. Unset synthesizes "
+              "everything");
+
     program.add_argument("--warmup")
         .default_value(uint64_t{3})
         .scan<'u', uint64_t>()
@@ -176,6 +181,7 @@ std::optional<Config> ParseArgs(int argc, const char *const argv[]) {
 
     Config config;
     config.model_path = program.get<std::string>("--model");
+    config.inputs_path = program.present<std::string>("--inputs");
     config.warmup_iterations = program.get<uint64_t>("--warmup");
     config.min_epoch_iterations = program.get<uint64_t>("--min-epoch-iterations");
     config.intra_op_threads = program.present<int>("--threads");

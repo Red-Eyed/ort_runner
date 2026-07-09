@@ -21,6 +21,7 @@ void PrintIoDescription(const std::vector<InputSpec> &inputs,
 // was substituted for any dynamic dimension).
 void PrintPreamble(const Config &config, double load_time_ms,
                     const std::vector<InputSpec> &inputs,
+                    const std::vector<std::string> &input_sources,
                     const std::vector<OutputSpec> &outputs);
 
 // Human-readable summary of the benchmark run: warmup/measured run counts and a
@@ -35,6 +36,7 @@ void PrintTrailer(long peak_rss_kb, const std::optional<std::string> &profile_fi
 // nanobench's JSON template has no way to know about them. The only stdout output in JSON mode.
 void PrintJsonReport(const Config &config, double load_time_ms,
                       const std::vector<InputSpec> &inputs,
+                      const std::vector<std::string> &input_sources,
                       const std::vector<OutputSpec> &outputs, const BenchmarkOutcome &outcome,
                       const std::optional<std::string> &profile_file);
 

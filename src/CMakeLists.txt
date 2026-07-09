@@ -9,6 +9,9 @@ add_executable(ort_runner
     config.cpp
     ort_session.cpp
     input_synth.cpp
+    npy.cpp
+    npz.cpp
+    input_load.cpp
     benchmark.cpp
     report.cpp
 )

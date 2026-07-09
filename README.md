@@ -141,7 +141,34 @@ inputs (post dynamic-dim substitution, default_dim=5):
 `--default-dim 5`. A `--dim` name that matches nothing in the model prints a stderr warning
 instead of silently doing nothing -- catches typos in the name.
 
-### 4. Compare execution providers
+### 4. Feed real inputs instead of synthesized ones
+
+Auto-generation is metadata-only -- it knows shapes and dtypes but not *values*, which is fine
+for a latency number but can crash models that expect valid indices/categories (see Known
+limitations). To benchmark on real data, pass a NumPy `.npz` of named arrays via `--inputs`:
+
+```bash
+ort_runner --model model.onnx --inputs sample.npz
+```
+
+The archive's array names must match the model's input names (run `--list-io` first). One
+`.npz` is one **sample** -- the full set of inputs for one inference call -- and it's run
+repeatedly, just like synthesized inputs. Produce one with [`numpy.savez`][savez]:
+
+```python
+np.savez("sample.npz", input_ids=ids.astype("int64"), attention_mask=mask.astype("int64"))
+```
+
+Any input *not* present in the archive is synthesized as usual, so you can pin just the inputs
+that matter. Each preamble input line ends with `source=file:...` or `source=synth` so you can
+see which is which. dtype and statically-declared dims must match the model (mismatches are a
+clear error); dynamic dims take the array's own size. Use `numpy.savez` (uncompressed), not
+`numpy.savez_compressed`. A full runnable walkthrough with a 2-input model lives in
+[`examples/load_inputs/`](examples/load_inputs/).
+
+[savez]: https://numpy.org/doc/stable/reference/generated/numpy.savez.html
+
+### 5. Compare execution providers
 
 ```bash
 ort_runner --model model.onnx --provider cpu       # always available, the safe baseline
@@ -156,7 +183,7 @@ prebuilt ONNX Runtime packages this tool fetches by default (see Configuration b
 it only works if you point `ORT_RUNNER_SDK_DIR` at a custom ORT build compiled with XNNPACK
 enabled.
 
-### 5. Tune threading for the target device
+### 6. Tune threading for the target device
 
 ```bash
 ort_runner --model model.onnx --threads 4 --inter-op-threads 1
@@ -168,7 +195,7 @@ ort_runner --model model.onnx --threads 4 --intra-op-spinning off  # lower CPU/b
 ops -- worth trying on a battery-powered device where thermals/battery matter more than
 shaving the last microseconds off latency.
 
-### 6. Get an accurate memory reading
+### 7. Get an accurate memory reading
 
 The CPU memory arena pre-allocates a chunk up front, which can make `peak_rss` reflect the
 arena's allocation strategy more than the model's actual working set. If memory budget is
@@ -178,7 +205,7 @@ what you're actually measuring (not speed), disable it for a truer number:
 ort_runner --model model.onnx --disable-cpu-arena --disable-mem-pattern
 ```
 
-### 7. Profile a model to find slow ops
+### 8. Profile a model to find slow ops
 
 ```
 $ ort_runner --model model.onnx --profile --profile-prefix myrun
@@ -191,7 +218,7 @@ The written file is a standard Chrome-trace-format JSON (open it at `chrome://tr
 ts, ...}` events, one per op per iteration) showing per-op timing, useful for finding which
 specific op in the graph dominates latency rather than just the end-to-end number.
 
-### 8. Machine-readable output for scripts/CI
+### 9. Machine-readable output for scripts/CI
 
 ```bash
 ort_runner --model model.onnx --output-format json > result.json
@@ -203,7 +230,7 @@ jq '.benchmark.results[0].measurements | map(.elapsed) | add / length' result.js
 mixed in), so it's always safe to pipe directly -- one merged document combining this tool's
 own fields with nanobench's own per-epoch measurements under `.benchmark`.
 
-### 9. Benchmark on an actual Android device
+### 10. Benchmark on an actual Android device
 
 ```bash
 adb devices                    # confirm a device/emulator is connected first
@@ -261,8 +288,9 @@ Beyond the basics (`--model`, `--warmup`, `--min-epoch-iterations`, `--fill`, `-
 
 - **Randomly-filled integer inputs** (e.g. embedding/gather indices) are clamped to
   `[0, --int-fill-max]` (default `15`) as a mitigation, not a fix -- a model expecting indices
-  in a specific valid range may still throw on nonsensical synthesized input. This is an
-  inherent limitation of generating inputs from metadata alone, with no real sample data.
+  in a specific valid range may still throw on nonsensical synthesized input. This is inherent
+  to generating inputs from metadata alone; when it bites, supply real values with `--inputs`
+  (see the usage guide) instead of relying on synthesis.
 - Only a subset of ONNX tensor element types is supported for auto-generation:
   float32/float64/int64/int32/int16/int8/uint8/bool. Others (float16, string, complex, ...)
   raise a clear error.

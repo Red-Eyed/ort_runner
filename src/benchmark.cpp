@@ -88,7 +88,7 @@ BenchmarkStats ComputeBenchmarkStats(const ankerl::nanobench::Result &result,
 
 }  // namespace
 
-BenchmarkOutcome RunBenchmark(Ort::Session &session, SynthesizedInputs &inputs,
+BenchmarkOutcome RunBenchmark(Ort::Session &session, PreparedInputs &inputs,
                                const std::vector<std::string> &output_names,
                                const Config &config) {
     std::vector<const char *> input_name_ptrs;

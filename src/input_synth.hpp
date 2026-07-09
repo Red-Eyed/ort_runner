@@ -4,6 +4,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -50,18 +51,21 @@ struct OutputSpec {
 // the full spec backs --list-io.
 std::vector<OutputSpec> DescribeOutputs(Ort::Session &session);
 
-struct SynthesizedInputs {
-    std::vector<InputSpec> specs;
+struct PreparedInputs {
+    std::vector<InputSpec> specs;  // resolved_shape reflects the actual per-input shape used
     std::vector<std::string> names;
     std::vector<std::vector<std::byte>> storage;  // owns each tensor's backing memory
     std::vector<Ort::Value> values;                // Ort::Value(s) wrapping `storage`, no copy
+    std::vector<std::string> sources;  // parallel to specs: "synth" or "file:<npz path>"
 };
 
-// Synthesizes one input tensor per model input, sized per its resolved shape and filled per
-// `fill`. Throws std::runtime_error for an element type outside the supported subset
+// Synthesizes one input tensor for `spec` into `storage`, returning an Ort::Value that views it.
+// `rng` is threaded in (not seeded here) so a caller can share one generator across every
+// synthesized input and keep fills seed-reproducible in input order. Throws std::runtime_error
+// for an element type outside the supported subset
 // (float32/float64/int64/int32/int16/int8/uint8/bool).
-SynthesizedInputs SynthesizeInputs(Ort::Session &session, const Ort::MemoryInfo &memory_info,
-                                    const DimOverrides &dim_overrides, int64_t default_dim,
-                                    FillStrategy fill, uint64_t seed, int64_t int_fill_max);
+Ort::Value SynthesizeOneInput(std::vector<std::byte> &storage, const Ort::MemoryInfo &memory_info,
+                              const InputSpec &spec, FillStrategy fill, std::mt19937_64 &rng,
+                              int64_t int_fill_max);
 
 }  // namespace ort_runner

@@ -125,6 +125,7 @@ void PrintIoDescription(const std::vector<InputSpec> &inputs,
 
 void PrintPreamble(const Config &config, double load_time_ms,
                     const std::vector<InputSpec> &inputs,
+                    const std::vector<std::string> &input_sources,
                     const std::vector<OutputSpec> &outputs) {
     std::cout << "=== ort_runner ===\n";
     std::cout << "timestamp:          " << CurrentUtcTimestamp() << "\n";
@@ -153,11 +154,13 @@ void PrintPreamble(const Config &config, double load_time_ms,
                << " ms\n";
     std::cout << "\ninputs (post dynamic-dim substitution, default_dim=" << config.default_dim
                << "):\n";
-    for (const auto &spec : inputs) {
+    for (size_t i = 0; i < inputs.size(); ++i) {
+        const auto &spec = inputs[i];
         std::cout << "  " << spec.name << ": declared=" << ShapeToString(spec.declared_shape)
                    << " resolved=" << ShapeToString(spec.resolved_shape)
                    << " dtype=" << ElementTypeName(spec.element_type)
-                   << " symbolic_dims=" << SymbolicDimsToString(spec.symbolic_dims) << "\n";
+                   << " symbolic_dims=" << SymbolicDimsToString(spec.symbolic_dims)
+                   << " source=" << input_sources[i] << "\n";
     }
     std::cout << "outputs:\n";
     for (const auto &spec : outputs) {
@@ -204,16 +207,19 @@ void PrintTrailer(long peak_rss_kb, const std::optional<std::string> &profile_fi
 
 void PrintJsonReport(const Config &config, double load_time_ms,
                       const std::vector<InputSpec> &inputs,
+                      const std::vector<std::string> &input_sources,
                       const std::vector<OutputSpec> &outputs, const BenchmarkOutcome &outcome,
                       const std::optional<std::string> &profile_file) {
     nlohmann::json inputs_json = nlohmann::json::array();
-    for (const auto &spec : inputs) {
+    for (size_t i = 0; i < inputs.size(); ++i) {
+        const auto &spec = inputs[i];
         inputs_json.push_back({
             {"name", spec.name},
             {"declared_shape", spec.declared_shape},
             {"symbolic_dims", spec.symbolic_dims},
             {"resolved_shape", spec.resolved_shape},
             {"dtype", ElementTypeName(spec.element_type)},
+            {"source", input_sources[i]},
         });
     }
 
@@ -241,6 +247,8 @@ void PrintJsonReport(const Config &config, double load_time_ms,
         {"cpu_cores", host.cpu_cores},
     };
     report["model_path"] = config.model_path;
+    report["inputs_path"] = config.inputs_path.has_value() ? nlohmann::json(*config.inputs_path)
+                                                           : nlohmann::json(nullptr);
     auto model_size_bytes = ModelFileSizeBytes(config.model_path);
     report["model_size_bytes"] =
         model_size_bytes.has_value() ? nlohmann::json(*model_size_bytes) : nlohmann::json(nullptr);

@@ -8,6 +8,7 @@
 
 #include "benchmark.hpp"
 #include "config.hpp"
+#include "input_load.hpp"
 #include "input_synth.hpp"
 #include "ort_session.hpp"
 #include "report.hpp"
@@ -46,16 +47,15 @@ int main(int argc, char **argv) {
 
         Ort::MemoryInfo memory_info =
             Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
-        auto inputs = ort_runner::SynthesizeInputs(session, memory_info, config->dim_overrides,
-                                                    config->default_dim, config->fill,
-                                                    config->seed, config->int_fill_max);
+        auto inputs = ort_runner::BuildInputs(session, memory_info, *config);
 
         std::vector<std::string> output_names;
         output_names.reserve(output_specs.size());
         for (const auto &spec : output_specs) output_names.push_back(spec.name);
 
         if (config->output_format == ort_runner::OutputFormat::human) {
-            ort_runner::PrintPreamble(*config, load_time_ms, input_specs, output_specs);
+            ort_runner::PrintPreamble(*config, load_time_ms, inputs.specs, inputs.sources,
+                                      output_specs);
         }
 
         auto outcome = ort_runner::RunBenchmark(session, inputs, output_names, *config);
@@ -71,8 +71,8 @@ int main(int argc, char **argv) {
             ort_runner::PrintBenchmarkSummary(outcome.stats);
             ort_runner::PrintTrailer(outcome.peak_rss_kb, profile_file);
         } else {
-            ort_runner::PrintJsonReport(*config, load_time_ms, input_specs, output_specs,
-                                        outcome, profile_file);
+            ort_runner::PrintJsonReport(*config, load_time_ms, inputs.specs, inputs.sources,
+                                        output_specs, outcome, profile_file);
         }
     } catch (const Ort::Exception &err) {
         std::cerr << "onnxruntime error: " << err.what() << "\n";

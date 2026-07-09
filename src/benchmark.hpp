@@ -41,7 +41,7 @@ struct BenchmarkOutcome {
     long peak_rss_kb = 0;
 };
 
-BenchmarkOutcome RunBenchmark(Ort::Session &session, SynthesizedInputs &inputs,
+BenchmarkOutcome RunBenchmark(Ort::Session &session, PreparedInputs &inputs,
                                const std::vector<std::string> &output_names,
                                const Config &config);
 

@@ -153,67 +153,35 @@ std::vector<OutputSpec> DescribeOutputs(Ort::Session &session) {
     return specs;
 }
 
-SynthesizedInputs SynthesizeInputs(Ort::Session &session, const Ort::MemoryInfo &memory_info,
-                                    const DimOverrides &dim_overrides, int64_t default_dim,
-                                    FillStrategy fill, uint64_t seed, int64_t int_fill_max) {
-    SynthesizedInputs result;
-    result.specs = DescribeInputs(session, dim_overrides, default_dim);
+Ort::Value SynthesizeOneInput(std::vector<std::byte> &storage, const Ort::MemoryInfo &memory_info,
+                              const InputSpec &spec, FillStrategy fill, std::mt19937_64 &rng,
+                              int64_t int_fill_max) {
+    int64_t count = NumElements(spec.resolved_shape);
+    const auto &shape = spec.resolved_shape;
 
-    result.names.reserve(result.specs.size());
-    result.storage.reserve(result.specs.size());
-    result.values.reserve(result.specs.size());
-
-    std::mt19937_64 rng(seed);
-
-    for (const auto &spec : result.specs) {
-        result.names.push_back(spec.name);
-        int64_t count = NumElements(spec.resolved_shape);
-        result.storage.emplace_back();
-        auto &buf = result.storage.back();
-
-        switch (spec.element_type) {
-            case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
-                result.values.push_back(MakeTensor<float>(buf, memory_info, spec.resolved_shape,
-                                                            count, fill, rng, int_fill_max));
-                break;
-            case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
-                result.values.push_back(MakeTensor<double>(buf, memory_info, spec.resolved_shape,
-                                                             count, fill, rng, int_fill_max));
-                break;
-            case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:
-                result.values.push_back(MakeTensor<int64_t>(buf, memory_info, spec.resolved_shape,
-                                                              count, fill, rng, int_fill_max));
-                break;
-            case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:
-                result.values.push_back(MakeTensor<int32_t>(buf, memory_info, spec.resolved_shape,
-                                                              count, fill, rng, int_fill_max));
-                break;
-            case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16:
-                result.values.push_back(MakeTensor<int16_t>(buf, memory_info, spec.resolved_shape,
-                                                              count, fill, rng, int_fill_max));
-                break;
-            case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:
-                result.values.push_back(MakeTensor<int8_t>(buf, memory_info, spec.resolved_shape,
-                                                             count, fill, rng, int_fill_max));
-                break;
-            case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
-                result.values.push_back(MakeTensor<uint8_t>(buf, memory_info, spec.resolved_shape,
-                                                              count, fill, rng, int_fill_max));
-                break;
-            case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:
-                result.values.push_back(MakeTensor<bool>(buf, memory_info, spec.resolved_shape,
-                                                           count, fill, rng, int_fill_max));
-                break;
-            default:
-                throw std::runtime_error(
-                    "input '" + spec.name + "' has element type " +
-                    ElementTypeName(spec.element_type) +
-                    ", which is outside the subset auto-generation supports "
-                    "(float32/float64/int64/int32/int16/int8/uint8/bool)");
-        }
+    switch (spec.element_type) {
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
+            return MakeTensor<float>(storage, memory_info, shape, count, fill, rng, int_fill_max);
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
+            return MakeTensor<double>(storage, memory_info, shape, count, fill, rng, int_fill_max);
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:
+            return MakeTensor<int64_t>(storage, memory_info, shape, count, fill, rng, int_fill_max);
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:
+            return MakeTensor<int32_t>(storage, memory_info, shape, count, fill, rng, int_fill_max);
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16:
+            return MakeTensor<int16_t>(storage, memory_info, shape, count, fill, rng, int_fill_max);
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:
+            return MakeTensor<int8_t>(storage, memory_info, shape, count, fill, rng, int_fill_max);
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
+            return MakeTensor<uint8_t>(storage, memory_info, shape, count, fill, rng, int_fill_max);
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:
+            return MakeTensor<bool>(storage, memory_info, shape, count, fill, rng, int_fill_max);
+        default:
+            throw std::runtime_error(
+                "input '" + spec.name + "' has element type " + ElementTypeName(spec.element_type) +
+                ", which is outside the subset auto-generation supports "
+                "(float32/float64/int64/int32/int16/int8/uint8/bool)");
     }
-
-    return result;
 }
 
 }  // namespace ort_runner

@@ -22,6 +22,9 @@ using DimOverrides = std::unordered_map<std::string, int64_t>;
 
 struct Config {
     std::string model_path;
+    // Path to a .npz of named input arrays (numpy.savez); array names must match model input
+    // names. Inputs absent from the archive are synthesized. Unset means synthesize everything.
+    std::optional<std::string> inputs_path;
     uint64_t warmup_iterations = 3;
     uint64_t min_epoch_iterations = 1;
     std::optional<int> intra_op_threads;  // unset means "leave at onnxruntime's own default"
