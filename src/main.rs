@@ -27,7 +27,8 @@ fn run() -> Result<()> {
     }
 
     if cli.info {
-        info::print(&dylib_path)?;
+        let system_info = info::gather(info::platform::probe().as_ref(), &dylib_path)?;
+        info::render::render(&system_info, cli.output_format)?;
         return Ok(());
     }
 

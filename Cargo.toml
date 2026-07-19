@@ -56,6 +56,18 @@ sysinfo = "0.39"
 jiff = "0.2"
 libc = "0.2"
 
+# Already in the tree via clap; declared directly so --info can colour its output using the
+# same styling stack, which means NO_COLOR / non-tty / CLICOLOR handling stays consistent with
+# clap's own and needs no hand-rolled tty detection.
+anstream = "0.6"
+anstyle = "1.0"
+
+# Android device identity lives in the system property store, not /proc, so it needs bionic's
+# __system_property_get. Scoped to android targets so Linux and macOS builds neither compile
+# nor link it -- see src/info/platform/android.rs.
+[target.'cfg(target_os = "android")'.dependencies]
+android_system_properties = "0.1"
+
 [lints.rust]
 # Exactly one unsafe block is expected (getrusage, for peak RSS -- sysinfo only exposes
 # current RSS). Warning on it keeps any second one from arriving unnoticed.
