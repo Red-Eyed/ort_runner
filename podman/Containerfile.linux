@@ -70,7 +70,7 @@ ENV RUSTUP_HOME=/opt/rustup \
     PATH=/opt/cargo/bin:${PATH}
 
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-        | sh -s -- -y --profile minimal --default-toolchain ${RUST_VERSION} \
+        | sh -s -- -y --profile minimal --component clippy,rustfmt --default-toolchain ${RUST_VERSION} \
     && rustup target add x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu \
     && rustc --version && cargo --version
 

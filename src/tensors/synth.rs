@@ -55,7 +55,11 @@ macro_rules! impl_fillable_int {
             fn random(count: usize, rng: &mut StdRng, int_max: i64) -> Vec<Self> {
                 // Clamp to the type's own range first: --int-fill-max is a single i64 applied
                 // to every integer input, so a default of 15 must not overflow an i8 tensor.
-                let ceiling = int_max.clamp(0, <$T>::MAX as i64) as $T;
+                //
+                // Neither truncation nor sign loss is possible, precisely because of that
+                // clamp: the value is already inside [0, $T::MAX] by the time it is narrowed.
+                #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                let ceiling = int_max.clamp(0, i64::from(<$T>::MAX)) as $T;
                 (0..count).map(|_| rng.random_range(0..=ceiling)).collect()
             }
         }

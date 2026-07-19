@@ -62,7 +62,7 @@ ENV RUSTUP_HOME=/opt/rustup \
 # All three ABIs live in one image: they differ only in linker flags, so splitting them would
 # mean three copies of a multi-gigabyte NDK.
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
-        | sh -s -- -y --profile minimal --default-toolchain ${RUST_VERSION} \
+        | sh -s -- -y --profile minimal --component clippy,rustfmt --default-toolchain ${RUST_VERSION} \
     && rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android \
     && rustc --version
 

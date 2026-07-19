@@ -9,7 +9,7 @@
 use anyhow::{bail, Result};
 use ort::value::TensorElementType;
 
-/// The element types ort_runner can synthesize or load.
+/// The element types `ort_runner` can synthesize or load.
 ///
 /// Matches the C++ subset. Everything outside it (float16, bfloat16, string, complex, the
 /// 4-bit and 8-bit float types) is rejected with a clear message rather than silently
