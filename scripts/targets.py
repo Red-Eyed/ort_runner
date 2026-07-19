@@ -43,8 +43,6 @@ class TargetConfig:
     run_platform: str | None
     # Rust target triple. Replaces the CMake preset the C++ build selected.
     rust_triple: str
-    # Android ABI name, used when packaging and when pushing to a device; None for Linux.
-    android_abi: str | None
     # `uname -m` this target's binaries produce when run natively, or None for targets that
     # never run on the build host (Android, driven separately over adb). Decides whether a built
     # binary can execute directly on the host or must go through the build container.
@@ -88,7 +86,6 @@ _CONFIGS: dict[Target, TargetConfig] = {
         image_platform="linux/arm64",
         run_platform="linux/arm64",
         rust_triple="x86_64-unknown-linux-gnu",
-        android_abi=None,
         native_machine="x86_64",
     ),
     Target.LINUX_ARM64: TargetConfig(
@@ -99,7 +96,6 @@ _CONFIGS: dict[Target, TargetConfig] = {
         image_platform="linux/arm64",
         run_platform="linux/arm64",
         rust_triple="aarch64-unknown-linux-gnu",
-        android_abi=None,
         native_machine="aarch64",
     ),
     Target.ANDROID_ARM64: TargetConfig(
@@ -111,7 +107,6 @@ _CONFIGS: dict[Target, TargetConfig] = {
         image_platform="linux/arm64",
         run_platform="linux/arm64",
         rust_triple="aarch64-linux-android",
-        android_abi="arm64-v8a",
         native_machine=None,
     ),
     Target.ANDROID_ARM32: TargetConfig(
@@ -122,7 +117,6 @@ _CONFIGS: dict[Target, TargetConfig] = {
         image_platform="linux/arm64",
         run_platform="linux/arm64",
         rust_triple="armv7-linux-androideabi",
-        android_abi="armeabi-v7a",
         native_machine=None,
     ),
     Target.ANDROID_X64: TargetConfig(
@@ -132,7 +126,6 @@ _CONFIGS: dict[Target, TargetConfig] = {
         image_platform="linux/arm64",
         run_platform="linux/arm64",
         rust_triple="x86_64-linux-android",
-        android_abi="x86_64",
         native_machine=None,
     ),
 }

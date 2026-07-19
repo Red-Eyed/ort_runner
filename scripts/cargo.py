@@ -15,7 +15,6 @@ import argparse
 
 from targets import OFFLINE, Target, podman_exec, resolve
 
-
 # Subcommands that never compile anything, so they reject --target and --offline rather than
 # ignoring them. `cargo fmt` just execs rustfmt, which knows neither flag and exits non-zero on
 # both -- passing them unconditionally is what left `just fmt` broken.

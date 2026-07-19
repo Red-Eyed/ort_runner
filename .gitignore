@@ -11,10 +11,6 @@
 
 /dist/
 
-# C++ build tree -- removed once the legacy/ sources are deleted.
-/build-*/
-/.ccache/
-
 __pycache__/
 /.venv/
 /.ruff_cache/
