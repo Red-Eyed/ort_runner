@@ -36,7 +36,19 @@ anyhow = "1.0"
 thiserror = "2.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-npyz = { version = "0.9", features = ["npz"] }
+# Deliberately WITHOUT npyz's "npz" feature. That feature pulls `zip` with default features,
+# which drags in zstd-sys and bzip2-sys (both compile C) plus AES crypto -- none of which a
+# numpy archive can contain. Cargo unifies features by union, so the only way to avoid them is
+# to not enable the feature and drive `zip` directly, below.
+#
+# Losing the feature costs little: it only wraps the zip iteration, and npyz still parses each
+# .npy member.
+npyz = "0.9"
+
+# numpy.savez writes STORED members and numpy.savez_compressed writes DEFLATE, so those two
+# methods are all that is needed. flate2's rust_backend keeps DEFLATE pure Rust, which also
+# keeps the Android cross-build free of any C toolchain requirement.
+zip = { version = "0.6", default-features = false, features = ["deflate"] }
 bytemuck = "1.25"
 rand = "0.9"
 statrs = "0.18"
