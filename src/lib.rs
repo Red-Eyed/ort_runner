@@ -14,3 +14,4 @@ pub mod dylib;
 pub mod info;
 pub mod model;
 pub mod session;
+pub mod tensors;
