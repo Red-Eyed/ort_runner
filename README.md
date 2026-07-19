@@ -1,317 +1,224 @@
 # ort_runner
 
-A console app for benchmarking ONNX Runtime inference on Linux and Android, modeled
-conceptually on ExecuTorch's
-[`executor_runner.cpp`](https://github.com/pytorch/executorch/blob/main/examples/portable/executor_runner/executor_runner.cpp).
-Point it at a `.onnx` model; it auto-generates input tensors from the model's own declared
-shapes/dtypes (no sample data required), runs the model, and reports latency and peak memory.
+**Benchmark an ONNX model on a real device without writing any setup code.**
 
-**This is a demo/experimentation project, not a published or production-ready tool.** Built to
-work through cross-compiling a small C++ CLI against ONNX Runtime for on-device (Android)
-benchmarking, containerized via Podman.
+Point it at a `.onnx` file. It reads the model's declared shapes and dtypes, generates the input
+tensors itself, runs inference, and reports the latency distribution and how much memory the model
+is actually responsible for.
 
-## Why this exists
+```console
+$ ort_runner --model model.onnx
 
-The use case: copy a single prebuilt executable onto a device (`adb push`), point it at a
-model path, and run it -- no need to hand-craft representative input tensors just to get a
-latency number. Input auto-generation is the core feature; everything else (CLI parsing,
-timing/statistics, JSON output, enum-string conversion) is deliberately built on popular
-MIT-licensed header-only libraries (see [third_party/README.md](third_party/README.md))
-rather than hand-rolled.
+run
+  model       model.onnx
+  provider    cpu
+  load        19.81 ms
+  inputs      synthesized (generated values, not real data)
 
-## Build
+latency over 100 iterations
+  p50         307.7 µs
+  p90         338.1 µs
+  p95         341.7 µs
+  p99         363.6 µs
+  mean        315.9 µs
+  std dev     16.2 µs
+  min / max   298.7 µs / 363.6 µs
+  warmup      1.06 ms first, 574.7 µs mean over 3 (excluded)
 
-Requires [Podman](https://podman.io/); no local C++ toolchain or Android NDK needed -- both
-build environments are containerized.
+memory attributable to this model
+  weights     16.9 MiB pss, 7.0 MiB private dirty
+  working set 16.4 MiB pss, 16.0 MiB private dirty
+  peak rss    43.9 MiB
+
+report: reports/model-20260719T180543Z.json
+```
+
+No Python on the device, no runtime to install: one binary and one `.so`, `adb push`ed and run.
+
+## Why you might want it
+
+**You have a model and no data.** The usual way to get a latency number is to write a harness that
+fabricates plausible inputs, which means knowing every shape, dtype and dynamic axis. This derives
+all of it from the model's own declarations. Auto-generated inputs are the point of the tool, not
+a convenience feature.
+
+**You need to know whether it fits, not just whether it's fast.** Most tools report peak RSS,
+which counts shared library pages in full — so it is roughly the same for every model you load and
+cannot tell two of them apart. `ort_runner` reports the *delta* the model is responsible for,
+split into two numbers that call for opposite fixes:
+
+| | what it is | how to shrink it |
+|---|---|---|
+| **weights** | parameters + optimized graph; fixed at export time | quantize, prune, smaller architecture |
+| **working set** | activation buffers; scales with input shape | smaller batch, shorter sequence, different EP |
+
+It reports PSS and private-dirty — what Android attributes to an app in `dumpsys meminfo`, and
+what predicts a low-memory kill — rather than only RSS.
+
+**You care about the tail.** Every inference is timed individually; there is no epoch averaging to
+smear slow iterations away. Percentiles are **nearest-rank**, so a reported p99 is a latency that
+actually occurred rather than an interpolated estimate. Warmup is timed and reported but excluded
+from the statistics, so a cold start never masquerades as tail latency.
+
+**Every run archives itself.** A JSON report lands in `reports/` with the command line, resolved
+configuration, device details, the model's own metadata, and every raw per-iteration sample.
+Getting a device back into the state that produced a number is the expensive part of benchmarking,
+so the samples are kept and tomorrow's question doesn't cost another run.
+
+That JSON also **describes itself** — it embeds a field guide, caveats and reporting guidance — so
+it can be handed to a language model to write up without it having to guess what `p99_ms` covers.
+
+## Install
+
+Download a release zip, unpack, run. Each contains the binary and its ONNX Runtime library and
+needs nothing else:
 
 ```bash
-just build-linux-x64        # Linux x86_64, into build-linux-x64/
-just build-linux-aarch64    # Linux aarch64 (e.g. Raspberry Pi 4), into build-linux-aarch64/
-just build-android-arm64    # Android arm64-v8a, into build-android-arm64/
-just build-android-armv7    # Android armeabi-v7a (hardfloat), into build-android-armv7/
+unzip ort_runner-v0.3.0-linux-aarch64-ort1.27.0.zip
+cd    ort_runner-v0.3.0-linux-aarch64-ort1.27.0
+./ort_runner --model model.onnx
 ```
 
-Each target fetches its own pinned ONNX Runtime distribution on first build (cached on the
-host under `sdk/`, gitignored) via `scripts/fetch_onnxruntime.py` -- always the official
-prebuilt binaries (Linux release tarballs; the shared libs from the Android AAR); ONNX Runtime
-itself is never built from source. Compiles are cached via `ccache`, persisted across
-`podman run` invocations in `~/.ccache` on the host (created automatically on the first build).
+Targets: `linux-x64`, `linux-aarch64`, `android-arm64`, `android-armv7`, `android-x86_64`.
 
-The `linux-aarch64` image is based on an older glibc (debian bullseye, glibc 2.31) so the
-binary runs on any newer-glibc aarch64 device -- e.g. a Raspberry Pi 4 on 64-bit RPi OS
-(Bullseye or Bookworm) -- without a "GLIBC_x.xx not found" mismatch, and it statically links
-libstdc++/libgcc so only glibc is a runtime dependency. On an arm64 host (Apple Silicon) it
-builds natively; on x86_64 under QEMU emulation.
+Linux builds have a **glibc 2.25 floor** — low enough for a Raspberry Pi on Buster, and the same
+floor ONNX Runtime's own prebuilts use, so the binary runs anywhere the runtime does.
 
-The Android toolchain image always targets `linux/amd64` (see `scripts/targets.py`) regardless of the
-build host's own architecture: the NDK only ships a Linux **host** toolchain for x86_64, so on
-an arm64 host (e.g. Apple Silicon) it runs under QEMU emulation -- confirmed working, just
-slower than a native x86_64 host.
+## Try it in 30 seconds
 
-## Run
+No model handy? Generate one:
 
 ```bash
-# Linux (pick the arch; aarch64 runs under emulation on a non-arm64 host)
-just run-linux-x64 path/to/model.onnx
-just run-linux-aarch64 path/to/model.onnx
-
-# Android: pushes the binary + libonnxruntime.so to a connected device/emulator and runs it
-just run-android-arm64 path/to/model.onnx
-just run-android-armv7 path/to/model.onnx
+uv run examples/large_reduce/make_model.py
+ort_runner --model examples/large_reduce/large_reduce.onnx \
+           --dim batch=1 --dim height=2048 --dim width=2048
 ```
 
-Each `build-<target>/bin/` is self-contained (the binary carries a `$ORIGIN`-relative rpath to
-the `libonnxruntime.so.1` copied beside it), so on a matching-arch Linux host you can also
-invoke it directly, or copy `build-<target>/bin/` elsewhere and run it from there, without
-`LD_LIBRARY_PATH`:
+Every axis of that model is dynamic, so `--dim` sizes the run — halve the axes and watch the
+working set fall with them.
 
-```bash
-build-linux-x64/bin/ort_runner --model path/to/model.onnx
-```
+## Usage
 
-Inspect a model's declared inputs/outputs without running inference:
+**Look at the model first.** Negative dimensions are the ones the model left open:
 
-```bash
-ort_runner --model path/to/model.onnx --list-io
-```
-
-Full flag reference: `ort_runner --help`.
-
-## Usage guide
-
-### 1. Inspect the model first
-
-Always start with `--list-io` -- it shows exactly what the model expects before you run
-anything, including which dimensions are dynamic and (if named) what they're called:
-
-```
+```console
 $ ort_runner --model model.onnx --list-io
 inputs:
-  x: shape=[1, 3, -1, -1] dtype=float32 symbolic_dims=H, W
-  idx: shape=[-1] dtype=int64 symbolic_dims=N
+  data: shape=[-1, -1, -1] dtype=float32 symbolic_dims=batch, height, width
 outputs:
-  y: shape=[1, 3, -1, -1] dtype=float32
-  idx_out: shape=[-1] dtype=int64
+  mean: shape=[] dtype=float32
 ```
 
-`-1` marks a dynamic dimension. `symbolic_dims` names the ones the graph gave a name to --
-these are exactly the names `--dim` (below) can target. A dynamic dim with no name (blank in
-`symbolic_dims`) is anonymous and can only be controlled via `--default-dim`.
-
-### 2. Run a basic benchmark
-
-```
-$ ort_runner --model model.onnx
-=== ort_runner ===
-timestamp:          2026-07-08T14:32:07Z
-host:               Linux 6.6.87.2-microsoft-standard-WSL2 (x86_64), 8 cores
-model:              model.onnx (4.2 MB)
-ort_version:        1.27.0
-provider:           cpu
-...
-load_time:          19.146 ms
-
-benchmark: inference
-  warmup_runs (skipped, unmeasured):  3
-  measured_runs (epochs):             612
-  total_iterations:                   612
-  total_measured_time:                0.521 s
-  throughput:                         1176.62 inferences/sec
-
-  latency_ms:
-    count         612.000
-    mean            0.850
-    std             0.042
-    min             0.781
-    25%             0.821
-    50%             0.847
-    75%             0.876
-    max             1.204
-
-peak_rss:     24924 KB (24.3 MB)
-```
-
-With no other flags: random inputs sized `1` for every dynamic dimension, CPU execution,
-ORT's own default thread/session settings. Good for "does this model run at all," not yet a
-meaningful latency number for most real models.
-
-### 3. Set realistic shapes for dynamic dimensions
-
-Anonymous dims (or ones you don't care to target individually) go through `--default-dim`;
-named ones you *do* care about go through `--dim`, which takes priority:
-
-```
-$ ort_runner --model model.onnx --dim H=32 --dim W=32 --default-dim 5
-...
-inputs (post dynamic-dim substitution, default_dim=5):
-  x: declared=[1, 3, -1, -1] resolved=[1, 3, 32, 32] dtype=float32 symbolic_dims=H, W
-  idx: declared=[-1] resolved=[5] dtype=int64 symbolic_dims=N
-```
-
-`H`/`W` resolved to the values you asked for; `N` (not targeted) fell back to
-`--default-dim 5`. A `--dim` name that matches nothing in the model prints a stderr warning
-instead of silently doing nothing -- catches typos in the name.
-
-### 4. Feed real inputs instead of synthesized ones
-
-Auto-generation is metadata-only -- it knows shapes and dtypes but not *values*, which is fine
-for a latency number but can crash models that expect valid indices/categories (see Known
-limitations). To benchmark on real data, pass a NumPy `.npz` of named arrays via `--inputs`:
+**Pin the dynamic dimensions.** `--dim` targets one named axis, `--default-dim` covers everything
+else (default `1`). A `--dim` naming an axis the model doesn't have warns rather than failing, so
+a typo can't silently do nothing:
 
 ```bash
-ort_runner --model model.onnx --inputs sample.npz
+ort_runner --model model.onnx --dim batch=1 --dim seq_len=128
+ort_runner --model model.onnx --default-dim 224
 ```
 
-The archive's array names must match the model's input names (run `--list-io` first). One
-`.npz` is one **sample** -- the full set of inputs for one inference call -- and it's run
-repeatedly, just like synthesized inputs. Produce one with [`numpy.savez`][savez]:
+**Feed real data** when the model's behaviour depends on input *values* — early exit, sparsity,
+content-driven sequence length. One array per input, keyed by the input's name:
 
 ```python
-np.savez("sample.npz", input_ids=ids.astype("int64"), attention_mask=mask.astype("int64"))
+np.savez("inputs.npz", input_ids=ids, attention_mask=mask)
+```
+```bash
+ort_runner --model model.onnx --inputs inputs.npz
 ```
 
-Any input *not* present in the archive is synthesized as usual, so you can pin just the inputs
-that matter. Each preamble input line ends with `source=file:...` or `source=synth` so you can
-see which is which. dtype and statically-declared dims must match the model (mismatches are a
-clear error); dynamic dims take the array's own size. Use `numpy.savez` (uncompressed), not
-`numpy.savez_compressed`. A full runnable walkthrough with a 2-input model lives in
-[`examples/load_inputs/`](examples/load_inputs/).
+The archive must supply every input and nothing else. A mismatch is an error naming both sides,
+never a fallback to synthesis: a typo'd key would otherwise benchmark generated data you believed
+you had replaced, which is the one failure that is wrong without looking wrong.
 
-[savez]: https://numpy.org/doc/stable/reference/generated/numpy.savez.html
-
-### 5. Compare execution providers
+**Choose an execution provider**, and see which ones your runtime actually contains:
 
 ```bash
-ort_runner --model model.onnx --provider cpu       # always available, the safe baseline
-ort_runner --model model.onnx --provider nnapi      # Android builds only
-ort_runner --model model.onnx --provider xnnpack    # see the note below
+ort_runner --info                                  # device, runtime, available providers
+ort_runner --model model.onnx --provider nnapi
 ```
 
-Compare the `latency_ms` mean/`throughput` lines across runs to see which is actually faster for a given model
-on a given device -- there's no universal winner. Note: `xnnpack` is implemented correctly but
-throws `XNNPACK execution provider is not supported in this build` against the official
-prebuilt ONNX Runtime packages this tool fetches by default (see Configuration below for why);
-it only works if you point `ORT_RUNNER_SDK_DIR` at a custom ORT build compiled with XNNPACK
-enabled.
+Availability is probed at runtime, never assumed at compile time, so this reports what your build
+genuinely supports rather than what it was expected to.
 
-### 6. Tune threading for the target device
+**Tune threading.** Unset means ONNX Runtime's own default, which is not the same as any specific
+number:
 
 ```bash
 ort_runner --model model.onnx --threads 4 --inter-op-threads 1
-ort_runner --model model.onnx --threads 4 --intra-op-spinning off  # lower CPU/battery use
+ort_runner --model model.onnx --threads 4 --intra-op-spinning off   # less CPU burn while idle
 ```
 
-`--threads` (intra-op) is the one that matters most for a single-graph CPU-bound model.
-`--intra-op-spinning off` trades a little wake-up latency for less CPU burn while idle between
-ops -- worth trying on a battery-powered device where thermals/battery matter more than
-shaving the last microseconds off latency.
+`--threads` (intra-op) matters most for a single-graph CPU-bound model. `--intra-op-spinning off`
+trades a little wake-up latency for less battery burn between ops — often the right trade on a
+phone.
 
-### 7. Get an accurate memory reading
-
-The CPU memory arena pre-allocates a chunk up front, which can make `peak_rss` reflect the
-arena's allocation strategy more than the model's actual working set. If memory budget is
-what you're actually measuring (not speed), disable it for a truer number:
+**Measure the true memory floor.** The CPU arena pre-allocates, so it reflects an allocation
+strategy as much as the model's real demand. When memory is what you're measuring:
 
 ```bash
 ort_runner --model model.onnx --disable-cpu-arena --disable-mem-pattern
 ```
 
-### 8. Profile a model to find slow ops
-
-```
-$ ort_runner --model model.onnx --profile --profile-prefix myrun
-...
-profile:      myrun_2026-07-06_18-30-57_276.json
-```
-
-The written file is a standard Chrome-trace-format JSON (open it at `chrome://tracing` or
-`https://ui.perfetto.dev`, or process it directly -- it's a flat JSON array of `{name, dur,
-ts, ...}` events, one per op per iteration) showing per-op timing, useful for finding which
-specific op in the graph dominates latency rather than just the end-to-end number.
-
-### 9. Machine-readable output for scripts/CI
+**Find the slow op** with ONNX Runtime's own per-op profiler. The output is Chrome-trace JSON —
+open it at `chrome://tracing` or [ui.perfetto.dev](https://ui.perfetto.dev):
 
 ```bash
-ort_runner --model model.onnx --output-format json > result.json
-jq '.peak_rss_kb, .load_time_ms, .provider' result.json
-jq '.benchmark.results[0].measurements | map(.elapsed) | add / length' result.json
+ort_runner --model model.onnx --profile --profile-prefix myrun
 ```
 
-`--output-format json` is the *only* thing written to stdout in that mode (no preamble text
-mixed in), so it's always safe to pipe directly -- one merged document combining this tool's
-own fields with nanobench's own per-epoch measurements under `.benchmark`.
-
-### 10. Benchmark on an actual Android device
+**Run on a device.** This builds if needed, pushes the binary and `libonnxruntime.so` to
+`/data/local/tmp/`, and runs it there over `adb shell`:
 
 ```bash
-adb devices                    # confirm a device/emulator is connected first
-just run-android model.onnx -- --dim H=32 --dim W=32 --provider nnapi
+adb devices
+just run-android-arm64 model.onnx --dim batch=1 --provider nnapi
 ```
 
-This builds (if needed), pushes the binary + `libonnxruntime.so` to `/data/local/tmp/`, and
-runs it there over `adb shell`. Any flags after `--` pass straight through to `ort_runner`.
+`--help` lists the rest: graph optimization level, memory-pattern control, fill strategy and seed
+for generated inputs, log severity, and dumping the post-optimization graph.
 
-### Troubleshooting
+## Build from source
 
-| Message | What it means |
-|---|---|
-| `input 'X' has element type ..., which is outside the subset auto-generation supports` | The model has an input type auto-generation doesn't handle (float16, string, complex, ...) -- see Known limitations. |
-| `input 'X' has no shape information at all (fully unranked)` | The model doesn't even declare a rank for that input; there's no dimension count to synthesize against. |
-| `--dim <name> does not match any symbolic dimension name in this model's inputs` (stderr warning, not fatal) | Typo in the name, or the axis you meant is actually anonymous -- check `--list-io`'s `symbolic_dims` output. |
-| `XNNPACK execution provider is not supported in this build` | Expected against the official prebuilt ORT packages (see `--provider` in Configuration) -- not a bug in this tool. |
-| `--provider nnapi is only supported in Android builds` | Self-explanatory; only meaningful when built via the `android-arm64` preset. |
-| A model expecting valid categorical/index values crashes on nonsensical input | Inherent to metadata-only auto-generation -- try `--int-fill-max` tuned to the model's real vocab/index size, or `--fill zeros`/`--fill ones` as a sanity check. |
+Requires only [Podman](https://podman.io/) and [just](https://github.com/casey/just). No Rust
+toolchain, no Android NDK, no C++ compiler on your machine — every build runs in a container.
 
-## Configuration
+```bash
+just build-linux-aarch64     # or linux-x64, android-arm64, android-armv7
+just test                    # unit tests; needs no ONNX Runtime at all
+just check                   # clippy + unit tests + runtime-gated tests
+```
 
-Beyond the basics (`--model`, `--warmup`, `--min-epoch-iterations`, `--fill`, `--seed`,
-`--output-format`, `--list-io`):
+The pinned ONNX Runtime is fetched automatically on first build, and is always Microsoft's
+official prebuilt binary — never built from source.
 
-- **Dynamic/symbolic input dimensions**: `--default-dim <int>` (default `1`) covers any
-  dynamic dim not otherwise named. `--dim <name>=<value>` (repeatable) overrides one specific
-  *named* symbolic dimension, e.g. `--dim batch=4 --dim seq_len=128` -- run `--list-io` first
-  to see each input's `symbolic_dims`. An override for a name that appears nowhere in the
-  model prints a stderr warning (typo protection), not a hard error.
-- **Threading**: `--threads`/`--inter-op-threads` (intra/inter-op thread counts),
-  `--execution-mode sequential|parallel`, `--intra-op-spinning`/`--inter-op-spinning on|off`
-  (thread spin-vs-sleep behavior while waiting for work).
-- **Execution provider**: `--provider cpu|nnapi|xnnpack`. `nnapi` is Android-only and is a
-  deprecated Android API (Google has been steering away from it since Android 15) but still
-  functional on existing devices. `xnnpack` is registered via ONNX Runtime's newer generic
-  `AppendExecutionProvider("XNNPACK")` API (not a dedicated per-provider function) rather than
-  being available on every build: the `xnnpack::*` kernel code is compiled into **both**
-  official prebuilt `.so`s (confirmed via `strings`), but empirically it still throws
-  `XNNPACK execution provider is not supported in this build` at runtime against the official
-  prebuilt packages -- ORT gates it behind an additional build-time capability flag that isn't
-  set for the standard release artifacts. Symbol presence alone was not sufficient evidence
-  (a lesson learned mid-implementation); this flag only becomes usable against a custom ONNX
-  Runtime build compiled with XNNPACK support enabled, swapped in via `ORT_RUNNER_SDK_DIR`.
-- **Profiling**: `--profile` enables ONNX Runtime's built-in per-op profiler
-  (`--profile-prefix` sets the output file prefix); the written Chrome-trace-format JSON
-  file's path is printed after the run.
-- **Session tuning**: `--graph-optimization-level disable|basic|extended|layout|all` (default
-  `all`, ORT's own session default), `--disable-cpu-arena`/`--disable-mem-pattern` (relevant
-  for accurate peak-RSS measurement, since the arena pre-allocates), `--optimized-model-path
-  <path>` (dumps the post-optimization graph), `--log-severity
-  verbose|info|warning|error|fatal`.
+Android cross-compiles from an arm64 image against the NDK sysroot rather than emulating the NDK's
+own x86_64 toolchain, because `rustc` segfaults under QEMU.
 
-## Known limitations
+## Honest limitations
 
-- **Randomly-filled integer inputs** (e.g. embedding/gather indices) are clamped to
-  `[0, --int-fill-max]` (default `15`) as a mitigation, not a fix -- a model expecting indices
-  in a specific valid range may still throw on nonsensical synthesized input. This is inherent
-  to generating inputs from metadata alone; when it bites, supply real values with `--inputs`
-  (see the usage guide) instead of relying on synthesis.
-- Only a subset of ONNX tensor element types is supported for auto-generation:
-  float32/float64/int64/int32/int16/int8/uint8/bool. Others (float16, string, complex, ...)
-  raise a clear error.
-- A fully unranked input (no shape info at all, not even a rank) is rejected with a clear
-  error rather than guessed at -- there's no `--dim`/`--default-dim` override for a dimension
-  count that isn't known at all.
-- Loading real input data from files (rather than auto-generating) is a reserved, not yet
-  implemented, stretch goal (`--input name=path`).
+- **A demo and experimentation project**, not a published or battle-tested tool.
+- **There is no CI**; releases are cut from a developer machine with `just release`. Android
+  binaries are checked for ELF architecture and bundling at build time, but on-device runs are
+  manual.
+- **Memory figures cover this process only.** Under `--provider nnapi` or `webgpu`, allocations
+  happen in a vendor HAL or GPU driver where `/proc` cannot see them; the numbers are complete for
+  `cpu` and `xnnpack`.
+- **Synthesized inputs are type- and shape-correct, not representative.** Random integer inputs
+  are clamped to `[0, --int-fill-max]` (default 15) because index inputs blow up on out-of-range
+  values — a mitigation, not a fix, since only you know the real vocabulary size. When it bites,
+  use `--inputs`.
+- **A subset of element types** is supported for generation: float32/float64, int64/int32/int16/
+  int8, uint8, bool. Others (float16, string, complex) raise a clear error.
+- **A fully unranked input is rejected** rather than guessed at: with no rank there is no
+  dimension count to synthesize against, and no flag can supply one.
+- **XNNPACK is compiled into the official prebuilt `.so`s but gated off at runtime.** Symbol
+  presence is not availability — ORT hides it behind a build-time capability flag the release
+  artifacts don't set. It needs a custom ONNX Runtime build.
+- **No 32-bit ARM Linux target** — ONNX Runtime ships no prebuilt for it. 32-bit ARM is covered on
+  Android, where the AAR does.
 
 ## License
 
-MIT -- see [LICENSE](LICENSE). Vendored third-party headers keep their own licenses (all MIT;
-see [third_party/README.md](third_party/README.md)).
+MIT — see [LICENSE](LICENSE).

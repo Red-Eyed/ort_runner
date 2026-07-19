@@ -5,7 +5,7 @@
 #   target/   CARGO_TARGET_DIR -- compiled artifacts, so only changed crates rebuild
 #
 # Both are gitignored and persist across `podman run` invocations, which is what the C++ build
-# used ~/.ccache for. Artifacts are namespaced per target triple, so the four targets share one
+# used ~/.ccache for. Artifacts are namespaced per target triple, so every target shares one
 # directory without clobbering each other.
 
 # Target used for tests and lints: the one that runs natively on an Apple Silicon host, since
@@ -23,7 +23,7 @@ image-linux-x64:
 image-linux-aarch64:
     uv run scripts/build_image.py linux-aarch64
 
-# Shared by both Android ABIs.
+# Shared by all three Android ABIs.
 image-android:
     uv run scripts/build_image.py android-arm64
 
@@ -47,7 +47,12 @@ build-android-armv7: image-android
     uv run scripts/build.py android-armv7
     uv run scripts/smoke.py android-armv7
 
-build-all: build-linux-x64 build-linux-aarch64 build-android-arm64 build-android-armv7
+build-android-x86_64: image-android
+    uv run scripts/build.py android-x86_64
+    uv run scripts/smoke.py android-x86_64
+
+# Every target release.py packages; a target missing here fails the release when it packages.
+build-all: build-linux-x64 build-linux-aarch64 build-android-arm64 build-android-armv7 build-android-x86_64
 
 # --- dependencies -----------------------------------------------------------
 
@@ -96,6 +101,10 @@ run-android-arm64 model *args: build-android-arm64
 
 run-android-armv7 model *args: build-android-armv7
     uv run scripts/run_android.py android-armv7 {{model}} {{args}}
+
+# The emulator ABI.
+run-android-x86_64 model *args: build-android-x86_64
+    uv run scripts/run_android.py android-x86_64 {{model}} {{args}}
 
 # --- package ----------------------------------------------------------------
 

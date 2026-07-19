@@ -32,6 +32,7 @@ _EXPECTED_MACHINE: dict[Target, int] = {
     Target.LINUX_ARM64: _EM_AARCH64,
     Target.ANDROID_ARM64: _EM_AARCH64,
     Target.ANDROID_ARM32: _EM_ARM,
+    Target.ANDROID_X64: _EM_X86_64,
 }
 
 # Targets whose binary the build/run environment can actually execute (Linux -- a same-arch or
