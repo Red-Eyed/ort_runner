@@ -123,21 +123,36 @@ mod tests {
 
     #[test]
     fn zeros_and_ones_are_exact() {
-        assert_eq!(fill_values::<f32>(3, Fill::Zeros, &mut rng(), 15), vec![0.0, 0.0, 0.0]);
-        assert_eq!(fill_values::<i32>(3, Fill::Ones, &mut rng(), 15), vec![1, 1, 1]);
-        assert_eq!(fill_values::<bool>(2, Fill::Ones, &mut rng(), 15), vec![true, true]);
+        assert_eq!(
+            fill_values::<f32>(3, Fill::Zeros, &mut rng(), 15),
+            vec![0.0, 0.0, 0.0]
+        );
+        assert_eq!(
+            fill_values::<i32>(3, Fill::Ones, &mut rng(), 15),
+            vec![1, 1, 1]
+        );
+        assert_eq!(
+            fill_values::<bool>(2, Fill::Ones, &mut rng(), 15),
+            vec![true, true]
+        );
     }
 
     #[test]
     fn random_floats_stay_in_the_unit_interval() {
         let values = fill_values::<f32>(500, Fill::Random, &mut rng(), 15);
-        assert!(values.iter().all(|v| (0.0..1.0).contains(v)), "out of range");
+        assert!(
+            values.iter().all(|v| (0.0..1.0).contains(v)),
+            "out of range"
+        );
     }
 
     #[test]
     fn random_integers_respect_int_max() {
         let values = fill_values::<i32>(500, Fill::Random, &mut rng(), 7);
-        assert!(values.iter().all(|v| (0..=7).contains(v)), "out of range: {values:?}");
+        assert!(
+            values.iter().all(|v| (0..=7).contains(v)),
+            "out of range: {values:?}"
+        );
     }
 
     /// --int-fill-max is one i64 applied to every integer input, so the default of 15 must not

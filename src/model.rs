@@ -108,7 +108,12 @@ pub fn describe_inputs(
         .inputs()
         .iter()
         .map(|outlet| {
-            let ValueType::Tensor { ty, shape, dimension_symbols } = outlet.dtype() else {
+            let ValueType::Tensor {
+                ty,
+                shape,
+                dimension_symbols,
+            } = outlet.dtype()
+            else {
                 bail!(
                     "input '{}' is not a tensor; auto-generated inputs only support tensors",
                     outlet.name()
@@ -206,7 +211,10 @@ mod tests {
 
     #[test]
     fn a_fully_dynamic_shape_resolves_every_dim() {
-        assert_eq!(resolve_shape(&[-1, -1, -1], &[], &overrides(&[]), 2), vec![2, 2, 2]);
+        assert_eq!(
+            resolve_shape(&[-1, -1, -1], &[], &overrides(&[]), 2),
+            vec![2, 2, 2]
+        );
     }
 
     #[test]
@@ -230,7 +238,12 @@ mod tests {
     #[test]
     fn an_override_naming_a_different_axis_is_ignored() {
         assert_eq!(
-            resolve_shape(&[-1, 3], &symbols(&["batch", ""]), &overrides(&[("seq_len", 99)]), 8),
+            resolve_shape(
+                &[-1, 3],
+                &symbols(&["batch", ""]),
+                &overrides(&[("seq_len", 99)]),
+                8
+            ),
             vec![8, 3]
         );
     }
@@ -255,7 +268,10 @@ mod tests {
     /// separate ONNX Runtime accessors, so nothing structurally guarantees equal length.
     #[test]
     fn a_short_symbolic_dims_list_falls_back_instead_of_panicking() {
-        assert_eq!(resolve_shape(&[-1, -1], &symbols(&["N"]), &overrides(&[("N", 5)]), 7), vec![5, 7]);
+        assert_eq!(
+            resolve_shape(&[-1, -1], &symbols(&["N"]), &overrides(&[("N", 5)]), 7),
+            vec![5, 7]
+        );
     }
 
     #[test]

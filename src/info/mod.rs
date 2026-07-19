@@ -15,7 +15,7 @@ pub mod render;
 use std::path::Path;
 
 use anyhow::Result;
-use ort::ep::{CPU, NNAPI, WebGPU, XNNPACK};
+use ort::ep::{WebGPU, CPU, NNAPI, XNNPACK};
 use ort::execution_providers::ExecutionProvider;
 use serde::Serialize;
 
@@ -103,7 +103,11 @@ fn host_info() -> HostInfo {
         cpu: CpuInfo {
             arch: sysinfo::System::cpu_arch(),
             logical_cores: system.cpus().len(),
-            brand: system.cpus().first().map(|cpu| cpu.brand().trim().to_string()).filter(|b| !b.is_empty()),
+            brand: system
+                .cpus()
+                .first()
+                .map(|cpu| cpu.brand().trim().to_string())
+                .filter(|b| !b.is_empty()),
         },
     }
 }
@@ -121,7 +125,10 @@ pub fn provider_statuses() -> Result<Vec<ProviderStatus>> {
     ];
     Ok(checks
         .into_iter()
-        .map(|(provider, available)| ProviderStatus { provider, available })
+        .map(|(provider, available)| ProviderStatus {
+            provider,
+            available,
+        })
         .collect())
 }
 

@@ -48,9 +48,15 @@ fn render_human(info: &SystemInfo) {
     field("soc", &info.device.soc.display());
 
     section("host");
-    field("os", &optional(info.host.os.as_deref(), info.host.os_version.as_deref()));
+    field(
+        "os",
+        &optional(info.host.os.as_deref(), info.host.os_version.as_deref()),
+    );
     field("kernel", &info.host.kernel.clone().unwrap_or_else(unknown));
-    field("hostname", &info.host.hostname.clone().unwrap_or_else(unknown));
+    field(
+        "hostname",
+        &info.host.hostname.clone().unwrap_or_else(unknown),
+    );
     field("arch", &info.host.cpu.arch);
     field("cpu", &info.host.cpu.brand.clone().unwrap_or_else(unknown));
     field("logical cores", &info.host.cpu.logical_cores.to_string());
@@ -73,7 +79,11 @@ fn render_human(info: &SystemInfo) {
     for device in &info.runtime_devices {
         let ep = device.execution_provider.as_deref().unwrap_or("?");
         let vendor = device.vendor.as_deref().unwrap_or("?");
-        anstream::println!("  {:<6} id={}  vendor={vendor}  ep={ep}", device.kind, device.id);
+        anstream::println!(
+            "  {:<6} id={}  vendor={vendor}  ep={ep}",
+            device.kind,
+            device.id
+        );
     }
 }
 

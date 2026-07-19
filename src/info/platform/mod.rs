@@ -32,7 +32,9 @@ pub enum Absent {
 
 impl Absent {
     pub fn unavailable(reason: impl Into<String>) -> Self {
-        Absent::Unavailable { reason: reason.into() }
+        Absent::Unavailable {
+            reason: reason.into(),
+        }
     }
 }
 

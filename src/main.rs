@@ -82,8 +82,11 @@ fn format_shape(shape: &[i64]) -> String {
 /// Anonymous axes carry an empty name, so they are dropped rather than printed as blanks --
 /// the list exists to show which names `--dim` can target.
 fn format_symbolic_dims(symbolic_dims: &[String]) -> String {
-    let named: Vec<&str> =
-        symbolic_dims.iter().filter(|n| !n.is_empty()).map(String::as_str).collect();
+    let named: Vec<&str> = symbolic_dims
+        .iter()
+        .filter(|n| !n.is_empty())
+        .map(String::as_str)
+        .collect();
     if named.is_empty() {
         "(none)".to_string()
     } else {

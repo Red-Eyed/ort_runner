@@ -38,14 +38,38 @@ macro_rules! dispatch_dtype {
     ($element_type:expr, $T:ident => $body:expr) => {{
         use ort::value::TensorElementType as Ty;
         match $element_type {
-            Ty::Float32 => { type $T = f32; $body }
-            Ty::Float64 => { type $T = f64; $body }
-            Ty::Int64 => { type $T = i64; $body }
-            Ty::Int32 => { type $T = i32; $body }
-            Ty::Int16 => { type $T = i16; $body }
-            Ty::Int8 => { type $T = i8; $body }
-            Ty::Uint8 => { type $T = u8; $body }
-            Ty::Bool => { type $T = bool; $body }
+            Ty::Float32 => {
+                type $T = f32;
+                $body
+            }
+            Ty::Float64 => {
+                type $T = f64;
+                $body
+            }
+            Ty::Int64 => {
+                type $T = i64;
+                $body
+            }
+            Ty::Int32 => {
+                type $T = i32;
+                $body
+            }
+            Ty::Int16 => {
+                type $T = i16;
+                $body
+            }
+            Ty::Int8 => {
+                type $T = i8;
+                $body
+            }
+            Ty::Uint8 => {
+                type $T = u8;
+                $body
+            }
+            Ty::Bool => {
+                type $T = bool;
+                $body
+            }
             other => {
                 return Err($crate::tensors::dtype::unsupported(other));
             }
@@ -59,8 +83,10 @@ macro_rules! dispatch_dtype {
 /// supported -- otherwise the user has to guess which types would work.
 #[must_use]
 pub fn unsupported(element_type: TensorElementType) -> anyhow::Error {
-    let supported: Vec<String> =
-        SUPPORTED.iter().map(|ty| crate::model::element_type_name(*ty)).collect();
+    let supported: Vec<String> = SUPPORTED
+        .iter()
+        .map(|ty| crate::model::element_type_name(*ty))
+        .collect();
     anyhow::anyhow!(
         "element type {} is outside the subset ort_runner supports ({})",
         crate::model::element_type_name(element_type),
@@ -144,8 +170,13 @@ mod tests {
 
     #[test]
     fn rejects_an_unsupported_type_and_lists_alternatives() {
-        let err = ensure_supported(TensorElementType::Float16).unwrap_err().to_string();
+        let err = ensure_supported(TensorElementType::Float16)
+            .unwrap_err()
+            .to_string();
         assert!(err.contains("float16"), "{err}");
-        assert!(err.contains("float32"), "should list what is supported: {err}");
+        assert!(
+            err.contains("float32"),
+            "should list what is supported: {err}"
+        );
     }
 }

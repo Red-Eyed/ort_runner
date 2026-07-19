@@ -232,9 +232,9 @@ impl Cli {
     /// # Errors
     /// If `--model` was not supplied.
     pub fn model_path(&self) -> anyhow::Result<&PathBuf> {
-        self.model
-            .as_ref()
-            .ok_or_else(|| anyhow::anyhow!("--model is required (or pass --version / --list-providers)"))
+        self.model.as_ref().ok_or_else(|| {
+            anyhow::anyhow!("--model is required (or pass --version / --list-providers)")
+        })
     }
 }
 
@@ -248,7 +248,9 @@ fn parse_dim_override(entry: &str) -> Result<(String, i64), String> {
         .ok_or_else(|| format!("invalid --dim value '{entry}' (expected name=value)"))?;
 
     if name.is_empty() || raw_value.is_empty() {
-        return Err(format!("invalid --dim value '{entry}' (expected name=value)"));
+        return Err(format!(
+            "invalid --dim value '{entry}' (expected name=value)"
+        ));
     }
 
     let value = raw_value
@@ -290,8 +292,16 @@ mod tests {
 
     #[test]
     fn later_duplicate_dim_names_win() {
-        let cli = Cli::try_parse_from(["ort_runner", "--model", "m.onnx", "--dim", "n=1", "--dim", "n=2"])
-            .expect("should parse");
+        let cli = Cli::try_parse_from([
+            "ort_runner",
+            "--model",
+            "m.onnx",
+            "--dim",
+            "n=1",
+            "--dim",
+            "n=2",
+        ])
+        .expect("should parse");
         assert_eq!(cli.dim_overrides().get("n"), Some(&2));
     }
 

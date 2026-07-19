@@ -1,7 +1,7 @@
 //! Turning parsed CLI options into a configured ONNX Runtime session.
 
 use anyhow::{anyhow, Context, Result};
-use ort::ep::{CPU, NNAPI, WebGPU, XNNPACK};
+use ort::ep::{WebGPU, CPU, NNAPI, XNNPACK};
 use ort::execution_providers::{ExecutionProvider, ExecutionProviderDispatch};
 use ort::session::builder::{GraphOptimizationLevel, SessionBuilder};
 use ort::session::Session;
@@ -45,10 +45,14 @@ pub fn build(cli: &Cli) -> Result<Session> {
         builder = builder.with_intra_threads(threads).map_err(plain)?;
     }
     if let Some(spinning) = cli.intra_op_spinning {
-        builder = builder.with_intra_op_spinning(spinning.is_on()).map_err(plain)?;
+        builder = builder
+            .with_intra_op_spinning(spinning.is_on())
+            .map_err(plain)?;
     }
     if let Some(spinning) = cli.inter_op_spinning {
-        builder = builder.with_inter_op_spinning(spinning.is_on()).map_err(plain)?;
+        builder = builder
+            .with_inter_op_spinning(spinning.is_on())
+            .map_err(plain)?;
     }
 
     // ONNX Runtime's flag is "enable memory pattern"; the CLI exposes the negation because
@@ -74,7 +78,9 @@ pub fn build(cli: &Cli) -> Result<Session> {
 /// provider cannot handle -- which is also where `--disable-cpu-arena` has to be applied, since
 /// the arena belongs to the CPU provider rather than to the session.
 fn providers(cli: &Cli) -> Result<Vec<ExecutionProviderDispatch>> {
-    let cpu = CPU::default().with_arena_allocator(!cli.disable_cpu_arena).build();
+    let cpu = CPU::default()
+        .with_arena_allocator(!cli.disable_cpu_arena)
+        .build();
 
     let preferred = match cli.provider {
         Provider::Cpu => return Ok(vec![cpu]),
