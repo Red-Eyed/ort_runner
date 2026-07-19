@@ -20,6 +20,7 @@
 pub mod cli;
 pub mod config;
 pub mod dylib;
+pub mod host;
 pub mod info;
 pub mod model;
 pub mod session;
