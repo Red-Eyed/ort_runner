@@ -49,6 +49,16 @@ build-android-armv7: image-android
 
 build-all: build-linux-x64 build-linux-aarch64 build-android-arm64 build-android-armv7
 
+# --- dependencies -----------------------------------------------------------
+
+# Populates .cargo/registry so every containerised cargo invocation can stay --offline.
+#
+# Runs on the host, not in an image, for the same reason SDK fetching does: cargo's network
+# path hangs indefinitely inside these containers. Run it after changing Cargo.toml; builds and
+# tests need no network once it has.
+fetch:
+    CARGO_HOME={{justfile_directory()}}/.cargo cargo fetch --locked
+
 # --- test and lint ----------------------------------------------------------
 
 # Unit tests. The pure-logic modules need no ONNX Runtime, so this needs no fetched SDK.
@@ -61,8 +71,13 @@ lint: (_image dev_target)
 fmt: (_image dev_target)
     uv run scripts/cargo.py {{dev_target}} fmt
 
+# Integration tests that build a real ort Tensor, so unlike `test` these need a runtime.
+# Fetches the SDK if it is missing.
+test-e2e: (_image dev_target)
+    uv run scripts/test_e2e.py {{dev_target}}
+
 # Everything CI would check.
-check: lint test
+check: lint test test-e2e
 
 _image target:
     uv run scripts/build_image.py {{target}}

@@ -13,7 +13,13 @@ from __future__ import annotations
 
 import argparse
 
-from targets import Target, podman_exec, resolve
+from targets import OFFLINE, Target, podman_exec, resolve
+
+
+# Subcommands that never compile anything, so they reject --target and --offline rather than
+# ignoring them. `cargo fmt` just execs rustfmt, which knows neither flag and exits non-zero on
+# both -- passing them unconditionally is what left `just fmt` broken.
+NON_COMPILING_SUBCOMMANDS = frozenset({"fmt"})
 
 
 def main() -> None:
@@ -25,10 +31,15 @@ def main() -> None:
     if not args.args:
         parser.error("expected a cargo subcommand, e.g. `test` or `clippy --all-targets`")
 
-    config = resolve(args.target)
+    subcommand, *subcommand_args = args.args
     # Explicit --target keeps artifacts in the same per-triple directory the release build
     # uses, so the two share compiled dependencies rather than each keeping their own copy.
-    command = ["cargo", args.args[0], "--target", config.rust_triple, *args.args[1:]]
+    build_flags = (
+        []
+        if subcommand in NON_COMPILING_SUBCOMMANDS
+        else [OFFLINE, "--target", resolve(args.target).rust_triple]
+    )
+    command = ["cargo", subcommand, *build_flags, *subcommand_args]
     podman_exec(args.target, ["bash", "-c", " ".join(command)])
 
 

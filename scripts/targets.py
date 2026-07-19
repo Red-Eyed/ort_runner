@@ -8,8 +8,10 @@ all drive off the resolved config.
 
 from __future__ import annotations
 
+import os
 import platform
 import subprocess
+import uuid
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -140,6 +142,14 @@ def resolve(target: Target) -> TargetConfig:
     return _CONFIGS[target]
 
 
+# Cargo's network path hangs indefinitely inside these containers (0% CPU, blocked on a
+# socket) even though curl reaches index.crates.io fine. --offline sidesteps it entirely and is
+# correct anyway: every dependency is already vendored in the bind-mounted .cargo/registry, and
+# a build that silently reaches the network is not hermetic. Use `just fetch` when Cargo.toml
+# changes and new crates are genuinely needed.
+OFFLINE = "--offline"
+
+
 def cargo_build_command(target: Target) -> str:
     """The cargo invocation that builds `target`, run inside its toolchain image.
 
@@ -147,15 +157,39 @@ def cargo_build_command(target: Target) -> str:
     through CARGO_TARGET_<TRIPLE>_LINKER, so no per-ABI wrapper tool is involved, and
     `load-dynamic` means nothing links against ONNX Runtime anywhere.
     """
-    return f"cargo build --release --target {resolve(target).rust_triple}"
+    return f"cargo build {OFFLINE} --release --target {resolve(target).rust_triple}"
 
 
-def podman_exec(target: Target, command: list[str]) -> None:
+# No containerised run may hang forever. A silent hang is this repo's worst failure mode: it
+# looks identical to a slow cross-compile, so it gets waited on rather than investigated, and it
+# has burned entire sessions. Anything still running past this is not making progress -- a cold
+# cross-compile of the whole dependency graph finishes well inside it.
+DEFAULT_TIMEOUT_SECONDS = 1800
+
+
+def _kill_container(name: str) -> None:
+    """Stops a container the timeout gave up on.
+
+    Killing the podman *client* does not stop the container -- it keeps running detached, holding
+    memory and the CARGO_TARGET_DIR lock, so the next run inherits the mess. That is why the run
+    below is named: the name is the only handle left once the client is gone.
+    """
+    subprocess.run(["podman", "kill", name], check=False, capture_output=True)
+
+
+def podman_exec(
+    target: Target, command: list[str], timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS
+) -> None:
     """Runs `command` inside `target`'s toolchain image, repo mounted at /workspace.
 
     The same image builds and runs: its glibc 2.27 is low enough that produced binaries stay
     portable, and high enough to dlopen libonnxruntime.so. So this serves both the build and
     running built binaries on hosts (macOS) that cannot execute them directly.
+
+    Bounded by `timeout_seconds`: a run that exceeds it is killed and raises, so a hang always
+    surfaces as a failure with a diagnostic rather than an indefinite wait. Every containerised
+    command in this repo goes through here, which is what makes that guarantee unavoidable
+    rather than something each caller has to remember.
     """
     config = resolve(target)
     image = config.image_tag
@@ -163,22 +197,36 @@ def podman_exec(target: Target, command: list[str]) -> None:
     # Set here rather than in the image: it depends on the container's architecture, and one
     # Containerfile serves both Linux arches.
     target_dir_args = ["-e", f"CARGO_TARGET_DIR=/workspace/target/{config.image_tag}"]
-    subprocess.run(
-        [
-            "podman",
-            "run",
-            "--rm",
-            *platform_args,
-            *target_dir_args,
-            "-v",
-            f"{REPO_ROOT}:/workspace:Z",
-            "-w",
-            "/workspace",
-            image,
-            *command,
-        ],
-        check=True,
-    )
+    name = f"ort-runner-{target.value}-{os.getpid()}-{uuid.uuid4().hex[:8]}"
+    try:
+        subprocess.run(
+            [
+                "podman",
+                "run",
+                "--rm",
+                "--name",
+                name,
+                *platform_args,
+                *target_dir_args,
+                "-v",
+                f"{REPO_ROOT}:/workspace:Z",
+                "-w",
+                "/workspace",
+                image,
+                *command,
+            ],
+            check=True,
+            timeout=timeout_seconds,
+        )
+    except subprocess.TimeoutExpired:
+        _kill_container(name)
+        raise SystemExit(
+            f"timed out after {timeout_seconds}s and was killed:\n"
+            f"    {' '.join(command)}\n"
+            f"This is a hang, not slowness. Check what the container was blocked on with\n"
+            f"`podman ps` and `podman top <id>` while it runs -- a test binary sitting in\n"
+            f"futex_do_wait means it reached ONNX Runtime without a loaded library."
+        ) from None
 
 
 def run_target_binary(target: Target, command: list[str]) -> None:
