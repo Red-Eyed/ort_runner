@@ -35,9 +35,26 @@ _EXPECTED_MACHINE: dict[Target, int] = {
     Target.ANDROID_X64: _EM_X86_64,
 }
 
-# Targets whose binary the build/run environment can actually execute (Linux -- a same-arch or
-# emulated build container). Android needs a device, so it gets the static checks only.
+# Targets whose binary could in principle be executed here at all. Android needs a device, so it
+# gets the static checks only -- see scripts/run_android.py for the on-device run.
 _RUNTIME_SMOKE: set[Target] = {Target.LINUX_X64, Target.LINUX_ARM64}
+
+# ELF machine each container architecture can execute.
+_IMAGE_ARCH_MACHINE: dict[str, int] = {"amd64": _EM_X86_64, "arm64": _EM_AARCH64}
+
+
+def _container_can_execute(target: Target) -> bool:
+    """Whether `target`'s own build image can run the binary it just produced.
+
+    Membership in `_RUNTIME_SMOKE` is not sufficient. The images are pinned to one architecture
+    per Containerfile, so a cross-compiled binary for a different architecture cannot be executed
+    in the container that produced it -- an x86_64 build out of the arm64 Linux image exits 255,
+    exec format error, which reads as a broken build rather than an unrunnable combination.
+
+    Skipping is honest rather than lenient: the ELF and bundling checks still run, and those are
+    what a cross-compile actually gets wrong. Executing it needs a machine of that architecture.
+    """
+    return _IMAGE_ARCH_MACHINE.get(resolve(target).host_arch) == _EXPECTED_MACHINE[target]
 
 
 def _fail(message: str) -> None:
@@ -69,10 +86,13 @@ def smoke(target: Target) -> None:
     if not bundled:
         _fail(f"onnxruntime shared library not bundled next to {binary}")
 
-    if target in _RUNTIME_SMOKE:
+    if target in _RUNTIME_SMOKE and _container_can_execute(target):
         run_target_binary(target, [f"{binary.relative_to(REPO_ROOT)}", "--version"])
+        ran = "ran --version"
+    else:
+        ran = "static checks only"
 
-    print(f"smoke OK: {target} (arch 0x{machine:02x}, bundled {bundled[0].name})")
+    print(f"smoke OK: {target} (arch 0x{machine:02x}, bundled {bundled[0].name}, {ran})")
 
 
 def main() -> None:
