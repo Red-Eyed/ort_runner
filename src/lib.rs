@@ -17,6 +17,7 @@
 //! ONNX Runtime present at all -- which is what lets `cargo test` run on a host that has never
 //! downloaded a runtime.
 
+pub mod bench;
 pub mod cli;
 pub mod config;
 pub mod dylib;

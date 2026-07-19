@@ -135,7 +135,11 @@ pub struct Cli {
     // 100 by default so the reported p99 has more than one sample behind it. Fewer makes the
     // high percentiles restatements of the maximum; the tail is the number that matters most on
     // a phone, so the default has to be able to express one.
-    #[arg(long, default_value_t = 100)]
+    //
+    // Rejected at zero by the parser rather than checked later: with no iterations there is
+    // nothing to summarise, and clap refusing it means the statistics code never has to have an
+    // opinion about an empty run.
+    #[arg(long, default_value_t = 100, value_parser = clap::value_parser!(u64).range(1..))]
     pub iterations: u64,
 
     /// Intra-op thread count; left at ONNX Runtime's own default if not passed.
