@@ -1,8 +1,10 @@
+use std::time::Instant;
+
 use anyhow::{Context, Result};
 use clap::Parser;
 
 use ort_runner::cli::Cli;
-use ort_runner::{config, dylib, info, model, session};
+use ort_runner::{bench, config, dylib, host, info, model, report, session, stats, tensors};
 
 fn main() {
     if let Err(err) = run() {
@@ -33,11 +35,21 @@ fn run() -> Result<()> {
     }
 
     let run_config = config::RunConfig::from(&cli);
-    let session = session::build(cli.model_path()?, &run_config)?;
-    let inputs = model::describe_inputs(&session, &cli.dim_overrides(), cli.default_dim)?;
+    let model_path = cli.model_path()?;
+
+    // Taken before the session exists, so the difference from the next reading isolates what the
+    // model costs from the constant the runtime and libc already occupy.
+    let baseline_memory = host::snapshot();
+
+    let load_started = Instant::now();
+    let mut session = session::build(model_path, &run_config)?;
+    let load_ms = load_started.elapsed().as_secs_f64() * 1000.0;
+    let session_memory = host::snapshot();
+
+    let input_specs = model::describe_inputs(&session, &cli.dim_overrides(), cli.default_dim)?;
     let outputs = model::describe_outputs(&session)?;
 
-    for (name, value) in model::unmatched_dim_overrides(&inputs, &cli.dim_overrides()) {
+    for (name, value) in model::unmatched_dim_overrides(&input_specs, &cli.dim_overrides()) {
         eprintln!(
             "warning: --dim {name}={value} does not match any symbolic dimension name in this \
              model's inputs"
@@ -45,11 +57,63 @@ fn run() -> Result<()> {
     }
 
     if cli.list_io {
-        print_io(&inputs, &outputs);
+        print_io(&input_specs, &outputs);
         return Ok(());
     }
 
-    println!("(benchmark not wired up yet -- phase 4)");
+    let prepared = tensors::prepare_inputs(
+        &input_specs,
+        cli.inputs.as_deref(),
+        tensors::SynthOptions {
+            fill: cli.fill,
+            seed: cli.seed,
+            int_max: cli.int_fill_max,
+        },
+    )?;
+
+    let bench_config = config::BenchConfig::from(&cli);
+    let timings = bench::run(&mut session, &prepared.inputs, bench_config)?;
+    let complete_memory = host::snapshot();
+
+    // Non-empty by construction: --iterations is rejected at zero by the parser, so this is the
+    // "cannot happen" branch rather than a case the CLI can reach.
+    let measured = stats::summarize(&timings.measured_ms)
+        .context("the measured iterations produced no samples")?;
+
+    let report = report::BenchReport {
+        created_at: jiff::Timestamp::now()
+            .strftime("%Y-%m-%dT%H:%M:%SZ")
+            .to_string(),
+        command_line: std::env::args().collect(),
+        model_path: model_path.display().to_string(),
+        model: model::describe_model(&session, model_path),
+        input_source: prepared.source,
+        inputs: input_specs,
+        outputs,
+        config: run_config,
+        bench_config,
+        system: info::gather(info::platform::probe().as_ref(), &dylib_path)?,
+        load_ms,
+        measured,
+        warmup: stats::summarize(&timings.warmup_ms),
+        timings,
+        memory: report::MemoryReport::new(
+            baseline_memory,
+            session_memory,
+            complete_memory,
+            host::peak_rss_bytes(),
+        ),
+    };
+
+    // Both destinations always run: stdout for the person watching, JSON for everything else.
+    // Ordering matters only in that the JSON reporter prints where it wrote.
+    for reporter in [
+        &report::human::HumanReporter as &dyn report::Reporter,
+        &report::json::JsonReporter::beside_executable()?,
+    ] {
+        reporter.report(&report)?;
+    }
+
     Ok(())
 }
 

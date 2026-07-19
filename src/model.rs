@@ -4,12 +4,85 @@
 //! rules -- the part with real branching -- are unit-testable without a model, a runtime, or a
 //! device.
 
+use std::collections::BTreeMap;
+use std::path::Path;
+
 use anyhow::{bail, Result};
 use ort::session::Session;
 use ort::value::{TensorElementType, ValueType};
 use serde::Serialize;
 
 use crate::cli::DimOverrides;
+
+/// What the `.onnx` file says about itself.
+///
+/// Every field is optional because every one is optional in the format: an exporter writes as
+/// much or as little as it likes, and most write almost nothing. `None` means the model does not
+/// declare it, never that the value is empty or zero.
+///
+/// Worth carrying despite being decoration to the measurement: when two runs are compared, this
+/// is what says *which* two models were compared. A latency delta between "the old one" and "the
+/// new one" is unusable a month later unless the files identified themselves.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct ModelDescription {
+    /// The model's own `doc_string` -- free text the exporter attached.
+    pub description: Option<String>,
+    /// The graph's `doc_string`, which some exporters use instead of the model's.
+    pub graph_description: Option<String>,
+    /// The graph's name.
+    pub graph_name: Option<String>,
+    /// What produced the file, e.g. "pytorch".
+    pub producer: Option<String>,
+    pub domain: Option<String>,
+    /// The exporter's own version number for this model, not a file format version.
+    pub version: Option<i64>,
+    /// Arbitrary `metadata_props` key/value pairs. A `BTreeMap` so the JSON key order is stable
+    /// between runs and two reports diff cleanly.
+    pub custom: BTreeMap<String, String>,
+    /// Size of the `.onnx` file on disk. `None` if it could not be stat'd.
+    ///
+    /// Note this is the file, not the memory the weights occupy: external-data models keep their
+    /// weights in sibling files, and any format-level compression is undone on load.
+    pub file_bytes: Option<u64>,
+}
+
+/// Reads the model's self-description.
+///
+/// Never fails the run. Metadata is decoration around the measurement, so a model that declares
+/// nothing, or a runtime that refuses the query, yields empty fields rather than aborting a
+/// benchmark that is otherwise perfectly valid.
+#[must_use]
+pub fn describe_model(session: &Session, path: &Path) -> ModelDescription {
+    let file_bytes = std::fs::metadata(path).ok().map(|meta| meta.len());
+
+    let Ok(metadata) = session.metadata() else {
+        return ModelDescription {
+            file_bytes,
+            ..ModelDescription::default()
+        };
+    };
+
+    let custom = metadata
+        .custom_keys()
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|key| {
+            let value = metadata.custom(&key)?;
+            Some((key, value))
+        })
+        .collect();
+
+    ModelDescription {
+        description: metadata.description(),
+        graph_description: metadata.graph_description(),
+        graph_name: metadata.name(),
+        producer: metadata.producer(),
+        domain: metadata.domain(),
+        version: metadata.version(),
+        custom,
+        file_bytes,
+    }
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct InputSpec {
