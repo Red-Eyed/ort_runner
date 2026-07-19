@@ -73,6 +73,31 @@ class TargetConfig:
         """Where cargo places this target's finished binaries."""
         return self.target_dir / self.rust_triple / "release"
 
+    @property
+    def prebuilt_dir(self) -> Path:
+        """Where a downloaded release unpacks, for running without building anything."""
+        return REPO_ROOT / "prebuilt" / self.rust_triple
+
+
+class Source(str, Enum):
+    """Which copy of the binary to run.
+
+    An enum, and required at every call site rather than defaulted, because the two can differ:
+    a stale download beside a fresh build produces numbers attributed to the wrong binary. In a
+    tool whose whole output is a measurement, quietly picking one is a correctness problem, not
+    a convenience.
+    """
+
+    BUILD = "build"
+    PREBUILT = "prebuilt"
+
+    def __str__(self) -> str:
+        return self.value
+
+    def directory(self, target: Target) -> Path:
+        config = resolve(target)
+        return config.build_dir if self is Source.BUILD else config.prebuilt_dir
+
 
 # Image/run platforms are pinned per target (not derived from the host) so podman produces the
 # intended architecture every time -- podman has been observed reusing a stale linux/amd64 layer

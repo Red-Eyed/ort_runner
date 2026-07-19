@@ -70,8 +70,27 @@ it can be handed to a language model to write up without it having to guess what
 
 ## Install
 
-Download a release zip, unpack, run. Each contains the binary and its ONNX Runtime library and
-needs nothing else:
+**You do not need to build this.** Releases ship self-contained binaries; the only requirement is
+**Python 3.9+** (standard library only — no pip install, no virtualenv), plus `adb` if you are
+benchmarking a phone.
+
+Grab everything and run it in one step:
+
+```bash
+just run-android-arm64 model.onnx --dim batch=1
+```
+
+That downloads the release for the target, pushes it to the connected device, and runs it. No
+Podman, no Rust, no NDK. The download is idempotent, so later runs skip it.
+
+No `just` either? The scripts are plain Python:
+
+```bash
+python3 scripts/download_prebuilt.py android-arm64
+python3 scripts/run_android.py --source prebuilt android-arm64 model.onnx
+```
+
+Or skip the repo entirely — unpack a release zip and run the binary directly:
 
 ```bash
 unzip ort_runner-v0.3.0-linux-aarch64-ort1.27.0.zip
@@ -80,6 +99,10 @@ cd    ort_runner-v0.3.0-linux-aarch64-ort1.27.0
 ```
 
 Targets: `linux-x64`, `linux-aarch64`, `android-arm64`, `android-armv7`, `android-x86_64`.
+
+A Linux binary is only run where it can execute *natively*. Timing one under emulation measures
+the emulator rather than the model while looking exactly like a real result, so that combination
+is refused rather than quietly reported.
 
 Linux builds have a **glibc 2.25 floor** — low enough for a Raspberry Pi on Buster, and the same
 floor ONNX Runtime's own prebuilts use, so the binary runs anywhere the runtime does.
@@ -168,8 +191,8 @@ open it at `chrome://tracing` or [ui.perfetto.dev](https://ui.perfetto.dev):
 ort_runner --model model.onnx --profile --profile-prefix myrun
 ```
 
-**Run on a device.** This builds if needed, pushes the binary and `libonnxruntime.so` to
-`/data/local/tmp/`, and runs it there over `adb shell`:
+**Run on a device.** This downloads the release if needed, pushes the binary and
+`libonnxruntime.so` to `/data/local/tmp/`, and runs it there over `adb shell`:
 
 ```bash
 adb devices
@@ -185,10 +208,15 @@ Requires only [Podman](https://podman.io/) and [just](https://github.com/casey/j
 toolchain, no Android NDK, no C++ compiler on your machine — every build runs in a container.
 
 ```bash
-just build-linux-aarch64     # or linux-x64, android-arm64, android-armv7
+just build-linux-aarch64     # or linux-x64, android-arm64, android-armv7, android-x86_64
 just test                    # unit tests; needs no ONNX Runtime at all
 just check                   # clippy + unit tests + runtime-gated tests
+just run-dev-android-arm64 model.onnx    # run what you just built, not a release
 ```
+
+The `run-*` recipes deliberately use released binaries; `run-dev-*` uses your local build. Which
+binary produced a measurement is never left implicit — a stale download beside a fresh build would
+otherwise attribute numbers to the wrong one.
 
 The pinned ONNX Runtime is fetched automatically on first build, and is always Microsoft's
 official prebuilt binary — never built from source.

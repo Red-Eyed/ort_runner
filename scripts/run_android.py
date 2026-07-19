@@ -9,7 +9,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from targets import Target, resolve
+from targets import Source, Target
 
 DEVICE_DIR = "/data/local/tmp"
 
@@ -42,7 +42,18 @@ def to_device_arg(arg: str) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("target", type=Target, choices=[Target.ANDROID_ARM64, Target.ANDROID_ARM32])
+    parser.add_argument(
+        "--source",
+        type=Source,
+        choices=list(Source),
+        required=True,
+        help="push the binary built from source, or one downloaded from a release",
+    )
+    parser.add_argument(
+        "target",
+        type=Target,
+        choices=[Target.ANDROID_ARM64, Target.ANDROID_ARM32, Target.ANDROID_X64],
+    )
     parser.add_argument("model")
     parser.add_argument("args", nargs=argparse.REMAINDER)
     args = parser.parse_args()
@@ -50,13 +61,16 @@ def main() -> None:
     if shutil.which("adb") is None:
         raise SystemExit("error: adb not found on PATH; install Android platform-tools")
 
-    bin_dir = resolve(args.target).build_dir
-    runner = require_file(
-        bin_dir / "ort_runner", "ort_runner binary (build the android target first)"
+    bin_dir = args.source.directory(args.target)
+    recipe = (
+        f"download-prebuilt {args.target}"
+        if args.source is Source.PREBUILT
+        else f"build-{args.target}"
     )
+    runner = require_file(bin_dir / "ort_runner", f"ort_runner binary (run `just {recipe}` first)")
     libort = require_file(
         bin_dir / "libonnxruntime.so",
-        "libonnxruntime.so (build the android target first)",
+        f"libonnxruntime.so beside it in {bin_dir}",
     )
     model = require_file(Path(args.model), "model")
 

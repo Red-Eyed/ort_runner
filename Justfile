@@ -88,23 +88,53 @@ _image target:
     uv run scripts/build_image.py {{target}}
 
 # --- run --------------------------------------------------------------------
+#
+# These use released binaries, not local builds: no Podman, no Rust, no NDK. The download is
+# idempotent, so the first run fetches and later ones do not. Building from source is a
+# developer's cost -- the run-dev-* recipes below are for that.
 
-run-linux-x64 model *args: build-linux-x64
-    uv run scripts/run_linux.py linux-x64 {{model}} {{args}}
+# Download released binaries. Defaults to every target; name targets to narrow it.
+download-prebuilt *targets="--all":
+    uv run scripts/download_prebuilt.py {{targets}}
 
-run-linux-aarch64 model *args: build-linux-aarch64
-    uv run scripts/run_linux.py linux-aarch64 {{model}} {{args}}
+run-linux-x64 model *args:
+    uv run scripts/download_prebuilt.py linux-x64
+    uv run scripts/run_linux.py --source prebuilt linux-x64 {{model}} {{args}}
 
-# Pushes the binary + libonnxruntime.so to a connected device and runs it there.
-run-android-arm64 model *args: build-android-arm64
-    uv run scripts/run_android.py android-arm64 {{model}} {{args}}
+run-linux-aarch64 model *args:
+    uv run scripts/download_prebuilt.py linux-aarch64
+    uv run scripts/run_linux.py --source prebuilt linux-aarch64 {{model}} {{args}}
 
-run-android-armv7 model *args: build-android-armv7
-    uv run scripts/run_android.py android-armv7 {{model}} {{args}}
+# Pushes the binary + libonnxruntime.so to a connected device and runs it there. Needs only adb.
+run-android-arm64 model *args:
+    uv run scripts/download_prebuilt.py android-arm64
+    uv run scripts/run_android.py --source prebuilt android-arm64 {{model}} {{args}}
+
+run-android-armv7 model *args:
+    uv run scripts/download_prebuilt.py android-armv7
+    uv run scripts/run_android.py --source prebuilt android-armv7 {{model}} {{args}}
 
 # The emulator ABI.
-run-android-x86_64 model *args: build-android-x86_64
-    uv run scripts/run_android.py android-x86_64 {{model}} {{args}}
+run-android-x86_64 model *args:
+    uv run scripts/download_prebuilt.py android-x86_64
+    uv run scripts/run_android.py --source prebuilt android-x86_64 {{model}} {{args}}
+
+# --- run from source (developers) -------------------------------------------
+
+run-dev-linux-x64 model *args: build-linux-x64
+    uv run scripts/run_linux.py --source build linux-x64 {{model}} {{args}}
+
+run-dev-linux-aarch64 model *args: build-linux-aarch64
+    uv run scripts/run_linux.py --source build linux-aarch64 {{model}} {{args}}
+
+run-dev-android-arm64 model *args: build-android-arm64
+    uv run scripts/run_android.py --source build android-arm64 {{model}} {{args}}
+
+run-dev-android-armv7 model *args: build-android-armv7
+    uv run scripts/run_android.py --source build android-armv7 {{model}} {{args}}
+
+run-dev-android-x86_64 model *args: build-android-x86_64
+    uv run scripts/run_android.py --source build android-x86_64 {{model}} {{args}}
 
 # --- package ----------------------------------------------------------------
 
@@ -119,7 +149,7 @@ release: build-all
 # Drops build artifacts and the fetched SDK but keeps .cargo/, so the next build re-downloads
 # no crates.
 clean:
-    rm -rf target dist sdk
+    rm -rf target dist sdk prebuilt
 
 # Also drops the crate registry, for reproducing a genuinely cold build.
 clean-all: clean
