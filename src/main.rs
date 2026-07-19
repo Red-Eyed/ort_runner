@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use clap::Parser;
 
 use ort_runner::cli::Cli;
-use ort_runner::{dylib, info, model, session};
+use ort_runner::{config, dylib, info, model, session};
 
 fn main() {
     if let Err(err) = run() {
@@ -32,7 +32,8 @@ fn run() -> Result<()> {
         return Ok(());
     }
 
-    let session = session::build(&cli)?;
+    let run_config = config::RunConfig::from(&cli);
+    let session = session::build(cli.model_path()?, &run_config)?;
     let inputs = model::describe_inputs(&session, &cli.dim_overrides(), cli.default_dim)?;
     let outputs = model::describe_outputs(&session)?;
 

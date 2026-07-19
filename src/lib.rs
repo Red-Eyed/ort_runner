@@ -10,6 +10,7 @@
 //! downloaded a runtime.
 
 pub mod cli;
+pub mod config;
 pub mod dylib;
 pub mod info;
 pub mod model;

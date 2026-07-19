@@ -125,13 +125,18 @@ pub struct Cli {
     #[arg(long)]
     pub list_io: bool,
 
-    /// Untimed iterations before measurement.
+    /// Iterations run before measurement begins. Timed and reported, but excluded from the
+    /// statistics, so a cold start cannot show up as tail latency.
     #[arg(long, default_value_t = 3)]
     pub warmup: u64,
 
-    /// Minimum iterations per measurement epoch.
-    #[arg(long, default_value_t = 1)]
-    pub min_epoch_iterations: u64,
+    /// Timed iterations the statistics are computed over.
+    //
+    // 100 by default so the reported p99 has more than one sample behind it. Fewer makes the
+    // high percentiles restatements of the maximum; the tail is the number that matters most on
+    // a phone, so the default has to be able to express one.
+    #[arg(long, default_value_t = 100)]
+    pub iterations: u64,
 
     /// Intra-op thread count; left at ONNX Runtime's own default if not passed.
     #[arg(long)]
