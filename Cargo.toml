@@ -1,0 +1,70 @@
+[package]
+name = "ort_runner"
+version = "0.3.0"
+edition = "2021"
+rust-version = "1.85"
+description = "Benchmark ONNX Runtime inference on Linux and Android, with auto-generated input tensors"
+license = "MIT"
+
+[dependencies]
+# Pinned exactly: ort has no stable 2.x release, only release candidates, so a caret range
+# would silently move to an rc with a different API.
+#
+# default-features = false is load-bearing -- the default set enables `download-binaries`,
+# which fetches an ONNX Runtime build at compile time. That would break the hermetic
+# container builds and defeat shipping our own pinned .so.
+#
+# api-24 matches the pinned ONNX Runtime (1.27.x) and is what makes
+# `--graph-optimization-level layout` (ORT_ENABLE_LAYOUT) usable; compiling at a lower api
+# level would widen runtime compatibility we don't ship, at the cost of that flag failing at
+# runtime instead of at compile time.
+#
+# load-dynamic means nothing links against ONNX Runtime at build time: the .so is dlopen'd at
+# startup. That is what lets the Android/aarch64 cross-builds need only a linker, and what
+# lets every pure-logic test run on the host with no ONNX Runtime present at all.
+ort = { version = "=2.0.0-rc.12", default-features = false, features = [
+    "std",
+    "api-24",
+    "load-dynamic",
+    "nnapi",
+    "xnnpack",
+    "webgpu",
+] }
+
+clap = { version = "4.6", features = ["derive"] }
+anyhow = "1.0"
+thiserror = "2.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+npyz = { version = "0.9", features = ["npz"] }
+bytemuck = "1.25"
+rand = "0.9"
+statrs = "0.18"
+sysinfo = "0.39"
+jiff = "0.2"
+libc = "0.2"
+
+[lints.rust]
+# Exactly one unsafe block is expected (getrusage, for peak RSS -- sysinfo only exposes
+# current RSS). Warning on it keeps any second one from arriving unnoticed.
+unsafe_code = "warn"
+missing_debug_implementations = "warn"
+
+[lints.clippy]
+# priority = -1 lets the specific `allow`s below override the group.
+pedantic = { level = "warn", priority = -1 }
+# A panic in a benchmarking CLI loses the run and prints a backtrace instead of a diagnosis;
+# every fallible path should surface as an error and exit(1). Denied rather than forbidden so
+# the test modules can still opt out (see the cfg_attr in lib.rs) -- `forbid` cannot be
+# overridden even where panicking is the correct assertion behaviour.
+unwrap_used = "deny"
+expect_used = "deny"
+# Naming like `cli::Cli` and `dylib::resolve` is clearer than the alternatives here.
+module_name_repetitions = "allow"
+
+[profile.release]
+# Benchmark numbers should reflect an optimized build; these are the usual release knobs for
+# a small CLI where binary size matters (it gets adb push'd to a device).
+lto = true
+codegen-units = 1
+strip = true
