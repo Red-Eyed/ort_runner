@@ -21,7 +21,7 @@ use ort_runner::tensors::load::parse_npy;
 
 /// Where to load ONNX Runtime from. Set by `scripts/test_e2e.py`.
 ///
-/// Deliberately not ORT_DYLIB_PATH: this binary calls `ort::init_from` explicitly, exactly as
+/// Deliberately not `ORT_DYLIB_PATH`: this binary calls `ort::init_from` explicitly, exactly as
 /// `main.rs` does, so the variable names who sets it rather than implying ort reads it itself.
 const DYLIB_ENV: &str = "ORT_RUNNER_TEST_DYLIB";
 

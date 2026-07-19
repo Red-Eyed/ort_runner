@@ -295,7 +295,7 @@ mod tests {
         assert_eq!(array.shape, vec![3]);
     }
 
-    /// numpy writes big-endian when asked; into_vec converts, so this is read rather than
+    /// numpy writes big-endian when asked; `into_vec` converts, so this is read rather than
     /// rejected the way the C++ rejected it.
     #[test]
     fn reads_a_big_endian_array() {
