@@ -1,36 +1,91 @@
-# Toolchain image for cross-compiling ort_runner for Android (arm64-v8a and armeabi-v7a) via
-# the NDK's own CMake toolchain file -- no full Android SDK/sdkmanager/Java needed for a native
-# CLI binary. Does not bake the repo or the ONNX Runtime SDK in -- both are supplied at
-# `podman run` time via a bind mount (see scripts/fetch_onnxruntime.py and the Justfile's
-# build-android-* recipes).
+# Toolchain image for cross-compiling ort_runner to every Android ABI (arm64-v8a,
+# armeabi-v7a, x86_64).
+#
+# Built for the HOST's architecture, not amd64 -- the opposite of what the C++ build did, and
+# the reason this works at all.
+#
+# The C++ image had to be amd64 because it ran the NDK's own clang, which Google ships as an
+# x86_64 host binary; under QEMU on an arm64 host that was merely slow. Rust cannot take the
+# same route: rustc segfaults under that emulation ("qemu: uncaught target signal 11", raised
+# while rustup verifies the freshly installed toolchain), so an emulated amd64 image cannot
+# host a Rust compiler at all.
+#
+# Instead the host toolchain is native and only the *inputs* come from the NDK:
+#
+#   * rustc and the distro's clang/lld run natively -- no emulation anywhere;
+#   * the NDK supplies the sysroot, CRT objects and libunwind, which are Android target
+#     artifacts and independent of the host architecture. (They unpack under a
+#     `prebuilt/linux-x86_64/` path, but the files below it are aarch64/arm/x86_64 Android
+#     objects, not host binaries.)
+#
+# The result builds in seconds instead of minutes, and works on an arm64 or an amd64 host.
+#
+# No Python here: fetching the ONNX Runtime SDK runs on the host via uv, since downloading into
+# the bind-mounted repo is a host concern. `load-dynamic` means nothing links against ONNX
+# Runtime at build time, so no ONNX Runtime headers are needed either.
+
 FROM debian:12-slim
 
 ARG NDK_VERSION=r29
-ENV ANDROID_NDK_HOME=/opt/android-ndk-${NDK_VERSION}
+ARG RUST_VERSION=1.97.0
+# Android 5.0, matching the minSdk of the onnxruntime-android AAR shipped beside the binary.
+ARG ANDROID_API=21
 
-# curl + unzip are used below to fetch the NDK at image-build time. cmake and ninja come from
-# PyPI (into an isolated venv) rather than apt, matching the other target images so every image
-# uses the same modern cmake (CMakePresets.json schema v6 needs cmake >= 3.25). python3 also
-# runs the fetch script.
-RUN apt-get update && apt-get install -y --no-install-recommends \
+ENV ANDROID_NDK_HOME=/opt/android-ndk-${NDK_VERSION}
+ENV NDK_TOOLCHAIN=${ANDROID_NDK_HOME}/toolchains/llvm/prebuilt/linux-x86_64
+
+# clang is the linker driver -- it understands --target=<android triple> -- and lld does the
+# linking. Both are the distro's own, native to this image's architecture.
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        clang \
+        lld \
+        llvm \
         build-essential \
+        binutils \
+        file \
         curl \
         ca-certificates \
+        xz-utils \
         unzip \
-        python3 \
-        python3-venv \
-        ccache \
-    && rm -rf /var/lib/apt/lists/* \
-    && python3 -m venv /opt/pytools \
-    && /opt/pytools/bin/pip install --no-cache-dir cmake ninja
-ENV PATH="/opt/pytools/bin:${PATH}"
-
-# Persisted on the host under the bind-mounted workspace (like sdk/ and build-android-*/), so
-# recompiles across podman run invocations are actually cached instead of starting cold each
-# time -- this matters most here, since NDK clang cross-compiles are the slowest builds.
-ENV CCACHE_DIR=/workspace/.ccache
+        pkg-config \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN curl -fL -o /tmp/android-ndk.zip \
         "https://dl.google.com/android/repository/android-ndk-${NDK_VERSION}-linux.zip" \
     && unzip -q /tmp/android-ndk.zip -d /opt \
     && rm /tmp/android-ndk.zip
+
+ENV RUSTUP_HOME=/opt/rustup \
+    CARGO_HOME=/opt/cargo \
+    PATH=/opt/cargo/bin:${PATH}
+
+# All three ABIs live in one image: they differ only in linker flags, so splitting them would
+# mean three copies of a multi-gigabyte NDK.
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --profile minimal --default-toolchain ${RUST_VERSION} \
+    && rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android \
+    && rustc --version
+
+# Per-ABI linker configuration. The spellings differ from the Rust triples in two places worth
+# noting: clang wants "armv7a-linux-androideabi" (with the 'a') where Rust says
+# "armv7-linux-androideabi", and the libunwind directory is "arm", not "armv7".
+#
+# The -L on the clang resource directory is required because Android's libunwind ships with the
+# NDK; the distro's own is built for glibc and does not satisfy `-lunwind`.
+ENV CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=clang \
+    CARGO_TARGET_AARCH64_LINUX_ANDROID_RUSTFLAGS="-Clink-arg=--target=aarch64-linux-android${ANDROID_API} -Clink-arg=--sysroot=${NDK_TOOLCHAIN}/sysroot -Clink-arg=-fuse-ld=lld -Clink-arg=-L${NDK_TOOLCHAIN}/lib/clang/21/lib/linux/aarch64" \
+    CARGO_TARGET_ARMV7_LINUX_ANDROIDEABI_LINKER=clang \
+    CARGO_TARGET_ARMV7_LINUX_ANDROIDEABI_RUSTFLAGS="-Clink-arg=--target=armv7a-linux-androideabi${ANDROID_API} -Clink-arg=--sysroot=${NDK_TOOLCHAIN}/sysroot -Clink-arg=-fuse-ld=lld -Clink-arg=-L${NDK_TOOLCHAIN}/lib/clang/21/lib/linux/arm" \
+    CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER=clang \
+    CARGO_TARGET_X86_64_LINUX_ANDROID_RUSTFLAGS="-Clink-arg=--target=x86_64-linux-android${ANDROID_API} -Clink-arg=--sysroot=${NDK_TOOLCHAIN}/sysroot -Clink-arg=-fuse-ld=lld -Clink-arg=-L${NDK_TOOLCHAIN}/lib/clang/21/lib/linux/x86_64"
+
+# Fail at image-build time rather than on first use if the NDK rearranged these paths -- both
+# the sysroot layout and the clang resource-directory version have moved across NDK releases.
+RUN test -d "${NDK_TOOLCHAIN}/sysroot" \
+    && test -f "${NDK_TOOLCHAIN}/lib/clang/21/lib/linux/aarch64/libunwind.a" \
+    && echo "NDK sysroot and libunwind present"
+
+# CARGO_HOME holds downloaded crate *sources*, which are architecture-independent, so every
+# image can share one copy. CARGO_TARGET_DIR is deliberately not set here -- see targets.py.
+ENV CARGO_HOME=/workspace/.cargo \
+    PATH=/opt/cargo/bin:/workspace/.cargo/bin:${PATH}

@@ -1,0 +1,92 @@
+# Toolchain image for building ort_runner for Linux (x86_64 and aarch64).
+#
+# Ubuntu 18.04 is chosen for its glibc 2.27, which is exactly what the prebuilt
+# libonnxruntime.so requires. That coincidence is the whole point:
+#
+#   * binaries built here need no more than GLIBC_2.27, so ONNX Runtime -- not ort_runner --
+#     decides which devices can run the result. The previous debian-bullseye image (glibc 2.31)
+#     made ort_runner the binding constraint and excluded Debian 10 / Raspberry Pi OS Buster
+#     for no reason;
+#   * this image is simultaneously new enough to dlopen libonnxruntime.so itself, so it can run
+#     what it builds (smoke tests, `just run-linux-*`) without a second runtime image.
+#
+# An older base would not improve the first point -- ONNX Runtime's 2.27 floor already dominates
+# -- and would break the second: manylinux2014 (glibc 2.17) builds fine but cannot load ONNX
+# Runtime at all, needing a separate runtime image to test anything.
+#
+# 18.04 is EOL but its archive still serves packages, and the image is multi-arch, so
+# `--platform` alone selects x86_64 or aarch64 with no per-arch base to keep in sync.
+#
+# Does not bake in the repo or the ONNX Runtime SDK -- both arrive at `podman run` time via a
+# bind mount, so a fetched SDK persists on the host between runs.
+
+FROM ubuntu:18.04
+
+# Pinned so every target compiles with the same compiler and a host rustup update cannot
+# silently change build output.
+ARG RUST_VERSION=1.97.0
+
+# gcc is the linker driver rustc invokes; libc6-dev supplies what that link step needs (crt1.o,
+# crti.o, libc.so) and is not implied by gcc alone. ort_runner compiles no C or C++ itself, and
+# load-dynamic means nothing links against ONNX Runtime at build time, so no ONNX Runtime
+# headers are needed. libstdc++ is already in the base image and is what libonnxruntime.so
+# requires at run time.
+#
+# The cross toolchain needs its own libc dev files (libc6-dev-*-cross); the cross gcc package
+# supplies the compiler but not the target's crt objects or libc.so, exactly as plain `gcc`
+# does not imply `libc6-dev` for the native target.
+#
+# Plus a cross toolchain for the *other* Linux architecture, so this one image builds both
+# targets while staying native to its host. That is what avoids QEMU: an emulated amd64 image
+# cannot host a Rust compiler at all, because rustc segfaults under it ("qemu: uncaught target
+# signal 11"). Ubuntu 18.04's cross-gcc targets glibc 2.27, the same floor as the native one,
+# so a cross-built binary is as portable as a natively built one.
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        build-essential \
+        binutils \
+        file \
+        curl \
+        ca-certificates \
+        xz-utils \
+        unzip \
+        pkg-config \
+    && if [ "$(uname -m)" = "aarch64" ]; then \
+           CROSS="gcc-x86-64-linux-gnu g++-x86-64-linux-gnu libc6-dev-amd64-cross binutils-x86-64-linux-gnu"; \
+       else \
+           CROSS="gcc-aarch64-linux-gnu g++-aarch64-linux-gnu libc6-dev-arm64-cross binutils-aarch64-linux-gnu"; \
+       fi \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends $CROSS \
+    && rm -rf /var/lib/apt/lists/*
+
+# No Python here by design, matching the Android image: fetching the ONNX Runtime SDK runs on
+# the host via uv, since downloading into the bind-mounted repo is a host concern rather than a
+# toolchain one. That also keeps 18.04's end-of-life Python 3.6 entirely out of the picture.
+
+# Rust goes in a fixed system location rather than $HOME/.cargo: CARGO_HOME is repointed at the
+# bind-mounted workspace below, and the toolchain must not live inside the directory that gets
+# replaced.
+ENV RUSTUP_HOME=/opt/rustup \
+    CARGO_HOME=/opt/cargo \
+    PATH=/opt/cargo/bin:${PATH}
+
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+        | sh -s -- -y --profile minimal --default-toolchain ${RUST_VERSION} \
+    && rustup target add x86_64-unknown-linux-gnu aarch64-unknown-linux-gnu \
+    && rustc --version && cargo --version
+
+# Debian and Ubuntu give the native compiler a triple-prefixed name as well as `cc`, so the
+# same two variables are correct whichever architecture is native here -- one of them names the
+# cross compiler installed above, the other names the native one.
+ENV CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=x86_64-linux-gnu-gcc \
+    CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
+
+# Registry and build cache land in the bind-mounted repo, so `podman run` invocations reuse
+# compiled dependencies instead of starting cold -- the role CCACHE_DIR played for the C++
+# build. Both paths are gitignored.
+# CARGO_HOME holds downloaded crate *sources*, which are architecture-independent, so every
+# image can share one copy safely. CARGO_TARGET_DIR is NOT set here: cargo namespaces compiled
+# artifacts by target triple, but host artifacts (build scripts, proc macros) land in a shared
+# target/release/ with no architecture in the path -- so an amd64 and an arm64 container would
+# overwrite each other's build-script binaries. scripts/targets.py sets it per host arch.
+ENV CARGO_HOME=/workspace/.cargo \
+    PATH=/opt/cargo/bin:/workspace/.cargo/bin:${PATH}
