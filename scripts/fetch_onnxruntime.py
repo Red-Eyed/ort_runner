@@ -78,6 +78,11 @@ _DISTS: dict[Target, TarballDist | AarDist] = {
         dest=SDK_ROOT / "onnxruntime-android-armeabi-v7a",
         abi="armeabi-v7a",
     ),
+    Target.ANDROID_X64: AarDist(
+        url=_MAVEN_AAR,
+        dest=SDK_ROOT / "onnxruntime-android-x86_64",
+        abi="x86_64",
+    ),
 }
 
 

@@ -15,6 +15,8 @@ def main() -> None:
     args = parser.parse_args()
 
     config = resolve(args.target)
+    # Both Linux targets share one Containerfile and one multi-arch base image, so --platform
+    # alone selects the architecture -- no per-arch base to keep in sync.
     subprocess.run(
         [
             "podman",

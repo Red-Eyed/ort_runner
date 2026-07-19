@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Per-target build configuration shared by the build/run entry-point scripts.
 
-Each Target names a concrete (os, arch) pair. Adding a new target is a data change here --
-one Target member plus one TargetConfig row -- not a logic change in the entry-point scripts,
-which all drive off the resolved config.
+Each Target names a concrete (os, arch) pair. Adding a target is a data change here -- one
+Target member plus one TargetConfig row -- not a logic change in the entry-point scripts, which
+all drive off the resolved config.
 """
 
 from __future__ import annotations
@@ -16,12 +16,18 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
+# No linux-armv7 target: Microsoft publishes ONNX Runtime tarballs for linux-x64 and
+# linux-aarch64 only. With no prebuilt shared library for 32-bit ARM Linux there is nothing for
+# ort_runner to load, and building ONNX Runtime from source is out of scope. 32-bit ARM is
+# still covered on Android, where the AAR does ship an armeabi-v7a library.
+
 
 class Target(str, Enum):
     LINUX_X64 = "linux-x64"
     LINUX_ARM64 = "linux-aarch64"
     ANDROID_ARM64 = "android-arm64"
     ANDROID_ARM32 = "android-armv7"
+    ANDROID_X64 = "android-x86_64"
 
     def __str__(self) -> str:
         return self.value
@@ -33,66 +39,98 @@ class TargetConfig:
     containerfile: Path
     image_platform: str
     run_platform: str | None
-    cmake_preset: str
-    build_dir: Path
+    # Rust target triple. Replaces the CMake preset the C++ build selected.
+    rust_triple: str
+    # Android ABI name, used when packaging and when pushing to a device; None for Linux.
+    android_abi: str | None
     # `uname -m` this target's binaries produce when run natively, or None for targets that
-    # never run on the build host (Android, which is driven separately over adb). Used to
-    # decide whether a built binary can execute directly on the host or must go through the
-    # (possibly emulated) build container -- see run_target_binary.
+    # never run on the build host (Android, driven separately over adb). Decides whether a built
+    # binary can execute directly on the host or must go through the build container.
     native_machine: str | None
+
+    @property
+    def host_arch(self) -> str:
+        """Architecture of the container that compiles this target ("amd64" / "arm64")."""
+        return self.image_platform.split("/")[-1]
+
+    @property
+    def target_dir(self) -> Path:
+        """CARGO_TARGET_DIR for this target, on the host.
+
+        Keyed by the build *image*, not by architecture and not by target triple.
+
+        Cargo namespaces target artifacts per triple, but build scripts and proc macros are
+        compiled for the host and land in a shared target/release/ with nothing distinguishing
+        them. Architecture alone is too coarse a key: the Linux image (Ubuntu 18.04, glibc 2.27)
+        and the Android image (Debian 12, glibc 2.36) are both arm64, so sharing a directory
+        made Ubuntu try to execute build scripts linked against glibc 2.36 -- "failed to run
+        custom build command for libc". One directory per image is the only key that holds.
+        """
+        return REPO_ROOT / "target" / self.image_tag
+
+    @property
+    def build_dir(self) -> Path:
+        """Where cargo places this target's finished binaries."""
+        return self.target_dir / self.rust_triple / "release"
 
 
 # Image/run platforms are pinned per target (not derived from the host) so podman produces the
-# intended arch every time -- observed podman reuse a stale linux/amd64 layer after another
-# image pulled the same base, silently emulating instead of building native. A target whose
-# platform differs from the host is built/run under QEMU emulation, which podman handles
-# transparently where binfmt is registered (the same mechanism the android amd64 image already
-# relies on when built on an arm64 host).
+# intended architecture every time -- podman has been observed reusing a stale linux/amd64 layer
+# after another image pulled the same base, silently emulating instead of building native. A
+# target whose platform differs from the host builds under QEMU emulation, which podman handles
+# transparently where binfmt is registered.
 _CONFIGS: dict[Target, TargetConfig] = {
     Target.LINUX_X64: TargetConfig(
-        image_tag="ort-runner-builder-linux-x64",
-        containerfile=REPO_ROOT / "podman" / "Containerfile.linux-x64",
-        image_platform="linux/amd64",
-        run_platform="linux/amd64",
-        cmake_preset="linux-x64",
-        build_dir=REPO_ROOT / "build-linux-x64",
+        image_tag="ort-runner-builder-linux",
+        containerfile=REPO_ROOT / "podman" / "Containerfile.linux",
+        image_platform="linux/arm64",
+        run_platform="linux/arm64",
+        rust_triple="x86_64-unknown-linux-gnu",
+        android_abi=None,
         native_machine="x86_64",
     ),
     Target.LINUX_ARM64: TargetConfig(
-        # Old-glibc (debian bullseye, glibc 2.31) aarch64 base, so the binary runs on any
-        # newer-glibc aarch64 device (Raspberry Pi 4 on 64-bit RPi OS, etc.) without a
-        # glibc-version mismatch. ONNX Runtime is the prebuilt aarch64 .so -- only ort_runner's
-        # own handful of .cpp files compile here, so building under emulation on an x86 host is
-        # quick despite QEMU.
-        image_tag="ort-runner-builder-linux-arm64",
-        containerfile=REPO_ROOT / "podman" / "Containerfile.linux-arm64",
+        # glibc 2.27 matches ONNX Runtime's own floor exactly, so the binary runs anywhere
+        # ONNX Runtime does -- including Raspberry Pi OS Buster (2.28).
+        image_tag="ort-runner-builder-linux",
+        containerfile=REPO_ROOT / "podman" / "Containerfile.linux",
         image_platform="linux/arm64",
         run_platform="linux/arm64",
-        cmake_preset="linux-aarch64",
-        build_dir=REPO_ROOT / "build-linux-aarch64",
+        rust_triple="aarch64-unknown-linux-gnu",
+        android_abi=None,
         native_machine="aarch64",
     ),
     Target.ANDROID_ARM64: TargetConfig(
-        # Always linux/amd64: the NDK only ships a Linux host toolchain for x86_64, regardless
-        # of the arm64-v8a Android target ABI, so this also has to run under QEMU emulation on
-        # an arm64 host/Podman VM (e.g. Apple Silicon).
+        # Always linux/amd64: the NDK ships a Linux host toolchain for x86_64 only, regardless
+        # of the arm64-v8a target ABI, so this runs under QEMU emulation on an arm64 host.
         image_tag="ort-runner-builder-android",
         containerfile=REPO_ROOT / "podman" / "Containerfile.android",
-        image_platform="linux/amd64",
-        run_platform="linux/amd64",
-        cmake_preset="android-arm64",
-        build_dir=REPO_ROOT / "build-android-arm64",
+        # Android binaries never run on the build host; they go to a device over adb.
+        image_platform="linux/arm64",
+        run_platform="linux/arm64",
+        rust_triple="aarch64-linux-android",
+        android_abi="arm64-v8a",
         native_machine=None,
     ),
     Target.ANDROID_ARM32: TargetConfig(
-        # Same amd64 NDK host toolchain as arm64; only the target ABI (armeabi-v7a, hardfloat)
-        # differs. Shares the android builder image.
+        # Same amd64 NDK host toolchain as arm64; only the target ABI differs. Shares the image.
         image_tag="ort-runner-builder-android",
         containerfile=REPO_ROOT / "podman" / "Containerfile.android",
-        image_platform="linux/amd64",
-        run_platform="linux/amd64",
-        cmake_preset="android-armeabi-v7a",
-        build_dir=REPO_ROOT / "build-android-armv7",
+        # Android binaries never run on the build host; they go to a device over adb.
+        image_platform="linux/arm64",
+        run_platform="linux/arm64",
+        rust_triple="armv7-linux-androideabi",
+        android_abi="armeabi-v7a",
+        native_machine=None,
+    ),
+    Target.ANDROID_X64: TargetConfig(
+        # The emulator ABI. Shares the Android image; only the linker flags differ.
+        image_tag="ort-runner-builder-android",
+        containerfile=REPO_ROOT / "podman" / "Containerfile.android",
+        image_platform="linux/arm64",
+        run_platform="linux/arm64",
+        rust_triple="x86_64-linux-android",
+        android_abi="x86_64",
         native_machine=None,
     ),
 }
@@ -102,23 +140,41 @@ def resolve(target: Target) -> TargetConfig:
     return _CONFIGS[target]
 
 
+def cargo_build_command(target: Target) -> str:
+    """The cargo invocation that builds `target`, run inside its toolchain image.
+
+    Identical for every target: the Android images point cargo at the NDK's clang wrappers
+    through CARGO_TARGET_<TRIPLE>_LINKER, so no per-ABI wrapper tool is involved, and
+    `load-dynamic` means nothing links against ONNX Runtime anywhere.
+    """
+    return f"cargo build --release --target {resolve(target).rust_triple}"
+
+
 def podman_exec(target: Target, command: list[str]) -> None:
-    """Runs `command` inside `target`'s already-built podman toolchain image, repo mounted at
-    /workspace. Lets build outputs run on hosts (e.g. macOS) that can't execute the target's
-    binaries directly -- the build image always can, since it's what built them."""
+    """Runs `command` inside `target`'s toolchain image, repo mounted at /workspace.
+
+    The same image builds and runs: its glibc 2.27 is low enough that produced binaries stay
+    portable, and high enough to dlopen libonnxruntime.so. So this serves both the build and
+    running built binaries on hosts (macOS) that cannot execute them directly.
+    """
     config = resolve(target)
+    image = config.image_tag
     platform_args = ["--platform", config.run_platform] if config.run_platform else []
+    # Set here rather than in the image: it depends on the container's architecture, and one
+    # Containerfile serves both Linux arches.
+    target_dir_args = ["-e", f"CARGO_TARGET_DIR=/workspace/target/{config.image_tag}"]
     subprocess.run(
         [
             "podman",
             "run",
             "--rm",
             *platform_args,
+            *target_dir_args,
             "-v",
             f"{REPO_ROOT}:/workspace:Z",
             "-w",
             "/workspace",
-            config.image_tag,
+            image,
             *command,
         ],
         check=True,
@@ -130,9 +186,8 @@ def run_target_binary(target: Target, command: list[str]) -> None:
 
     When the host can execute the target's binaries directly -- a native Linux host of the same
     arch, where the build container shares the host kernel -- this runs them in place, skipping
-    the container-start overhead on every invocation. Otherwise (macOS, or a different-arch
-    Linux host such as x86 building the aarch64 target) it falls back to podman_exec, which runs
-    them inside the target's own (possibly emulated) build image.
+    container-start overhead. Otherwise (macOS, or a different-arch Linux host) it falls back to
+    podman_exec, which runs them inside the target's own build image.
     """
     config = resolve(target)
     host_can_exec = platform.system() == "Linux" and platform.machine() == config.native_machine
