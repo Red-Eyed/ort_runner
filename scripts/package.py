@@ -2,8 +2,8 @@
 """Package built targets into distributable zips under dist/.
 
 Each zip is a self-contained, runnable ort_runner: just the binary plus the ONNX Runtime shared
-library bundled beside it (so the binary's $ORIGIN rpath resolves on extraction) -- no source.
-The version in the zip name is read from CMakeLists.txt, the single source of the project version.
+library bundled beside it (which is where dylib::resolve looks) -- no source.
+The version in the zip name is read from Cargo.toml, the single source of the project version.
 """
 
 from __future__ import annotations
@@ -13,6 +13,7 @@ import re
 import zipfile
 from pathlib import Path
 
+import build
 from fetch_onnxruntime import ORT_VERSION
 from targets import REPO_ROOT, Target, resolve
 
@@ -20,10 +21,11 @@ DIST_DIR = REPO_ROOT / "dist"
 
 
 def project_version() -> str:
-    text = (REPO_ROOT / "CMakeLists.txt").read_text()
-    match = re.search(r"project\(\s*\S+\s+VERSION\s+(\d+\.\d+\.\d+)", text)
+    """The version from Cargo.toml's [package] section."""
+    text = (REPO_ROOT / "Cargo.toml").read_text()
+    match = re.search(r'^version\s*=\s*"(\d+\.\d+\.\d+)"', text, re.MULTILINE)
     if not match:
-        raise SystemExit("error: could not read project VERSION from CMakeLists.txt")
+        raise SystemExit("error: could not read version from Cargo.toml")
     return match.group(1)
 
 
@@ -36,22 +38,24 @@ def _add_file(archive: zipfile.ZipFile, src: Path, arcname: str, executable: boo
 
 
 def package(target: Target) -> Path:
-    config = resolve(target)
-    bin_dir = config.build_dir / "bin"
-    binary = bin_dir / "ort_runner"
+    build_dir = resolve(target).build_dir
+    binary = build_dir / "ort_runner"
     if not binary.is_file():
         raise SystemExit(f"error: build {target} first, missing {binary}")
-    libs = sorted(bin_dir.glob("libonnxruntime.so*"))
-    if not libs:
-        raise SystemExit(f"error: onnxruntime library not bundled in {bin_dir}")
+
+    # Named exactly, not globbed. build.py bundles this one file, and a glob would also sweep up
+    # any leftover soname from an earlier layout -- putting the same 20 MB payload in the archive
+    # twice under two names, which is easy to miss and doubles every download.
+    library = build_dir / build.BUNDLED_LIBRARY_NAME
+    if not library.is_file():
+        raise SystemExit(f"error: {library} missing; build {target} first")
 
     stem = f"ort_runner-v{project_version()}-{target}-ort{ORT_VERSION}"
     DIST_DIR.mkdir(parents=True, exist_ok=True)
     zip_path = DIST_DIR / f"{stem}.zip"
     with zipfile.ZipFile(zip_path, "w") as archive:
         _add_file(archive, binary, f"{stem}/ort_runner", executable=True)
-        for lib in libs:
-            _add_file(archive, lib, f"{stem}/{lib.name}", executable=False)
+        _add_file(archive, library, f"{stem}/{library.name}", executable=False)
     print(zip_path)
     return zip_path
 

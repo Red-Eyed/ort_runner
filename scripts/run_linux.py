@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import argparse
 
-from targets import Target, resolve, run_target_binary
+from targets import REPO_ROOT, Target, resolve, run_target_binary
 
 
 def main() -> None:
@@ -20,7 +20,7 @@ def main() -> None:
     args = parser.parse_args()
 
     config = resolve(args.target)
-    runner = f"{config.build_dir.name}/bin/ort_runner"
+    runner = str((config.build_dir / "ort_runner").relative_to(REPO_ROOT))
     run_target_binary(args.target, [runner, "--model", args.model, *args.args])
 
 

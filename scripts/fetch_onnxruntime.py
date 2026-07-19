@@ -125,6 +125,25 @@ def _extract_aar_abi(archive: Path, dest: Path, abi: str) -> None:
         aar.extractall(dest, members=wanted)
 
 
+def library_path(target: Target) -> Path:
+    """The one libonnxruntime shared object to ship beside `target`'s binary.
+
+    Resolved through symlinks and returned as a single real file. The Linux release tarball ships
+    a soname chain -- libonnxruntime.so -> .so.1 -> .so.1.27.0 -- and following each name
+    separately would put the same 20 MB payload into a zip three times, while a zip cannot carry
+    the links themselves portably. One file, shipped under the plain `libonnxruntime.so` name that
+    `dylib::resolve` looks for first, is all a runnable bundle needs.
+    """
+    dist = _DISTS[target]
+    real = {path.resolve() for path in dist.dest.glob("**/libonnxruntime.so*")}
+    if not real:
+        raise SystemExit(f"error: no libonnxruntime.so under {dist.dest}; delete it and re-fetch")
+    if len(real) > 1:
+        found = ", ".join(sorted(str(path) for path in real))
+        raise SystemExit(f"error: expected one libonnxruntime.so for {target}, found: {found}")
+    return real.pop()
+
+
 def fetch(target: Target) -> Path:
     """Ensure `target`'s ONNX Runtime SDK is unpacked under sdk/; return its directory."""
     dist = _DISTS[target]

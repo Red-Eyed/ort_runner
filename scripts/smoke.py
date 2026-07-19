@@ -20,7 +20,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from targets import Target, resolve, run_target_binary
+from targets import REPO_ROOT, Target, resolve, run_target_binary
 
 # ELF e_machine values (ELF header offset 18) for the architectures these targets emit.
 _EM_X86_64 = 0x3E
@@ -54,7 +54,7 @@ def _read_elf_machine(binary: Path) -> int:
 
 def smoke(target: Target) -> None:
     config = resolve(target)
-    bin_dir = config.build_dir / "bin"
+    bin_dir = config.build_dir
     binary = bin_dir / "ort_runner"
     if not binary.is_file():
         _fail(f"binary not found (build the target first): {binary}")
@@ -69,7 +69,7 @@ def smoke(target: Target) -> None:
         _fail(f"onnxruntime shared library not bundled next to {binary}")
 
     if target in _RUNTIME_SMOKE:
-        run_target_binary(target, [f"{config.build_dir.name}/bin/ort_runner", "--version"])
+        run_target_binary(target, [f"{binary.relative_to(REPO_ROOT)}", "--version"])
 
     print(f"smoke OK: {target} (arch 0x{machine:02x}, bundled {bundled[0].name})")
 

@@ -50,7 +50,7 @@ def main() -> None:
     if shutil.which("adb") is None:
         raise SystemExit("error: adb not found on PATH; install Android platform-tools")
 
-    bin_dir = resolve(args.target).build_dir / "bin"
+    bin_dir = resolve(args.target).build_dir
     runner = require_file(
         bin_dir / "ort_runner", "ort_runner binary (build the android target first)"
     )
