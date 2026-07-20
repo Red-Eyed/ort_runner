@@ -20,6 +20,10 @@ All notable changes to this project are documented here. The format is based on
 
 - **`--profile` produced an empty trace.** ONNX Runtime only flushes the profile when profiling is
   explicitly ended, which never happened.
+- **`just download-prebuilt` with no targets named** now downloads every target, as its help
+  always claimed. Its `--all` flag never worked: `argparse` applies `choices` to the empty list a
+  variadic positional yields, so naming no targets failed with `invalid choice: []`. The flag is
+  gone; naming nothing means everything.
 
 ## [0.3.0] - 2026-07-19
 

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Download released ort_runner binaries so a target can be run without building it.
 
+    uv run scripts/download_prebuilt.py                       # every target, latest release
     uv run scripts/download_prebuilt.py android-arm64
     uv run scripts/download_prebuilt.py --version v0.3.0 linux-x64
-    uv run scripts/download_prebuilt.py --all
 
 Building from source needs Podman, a 4 GB toolchain image and a cross-compile; that is a
 developer's cost and there is no reason to make anyone else pay it. A release zip is already
@@ -143,10 +143,32 @@ def download(target: Target, version: str) -> Path:
     return destination
 
 
+def target_named(name: str) -> Target:
+    """Parse one target name, listing the valid ones when it does not match.
+
+    A `type=` converter rather than argparse's `choices=`, because argparse also applies `choices`
+    to the empty list a variadic positional yields when nothing is named -- which rejected the
+    download-everything case outright, with an "invalid choice: []" that named no real mistake.
+    """
+    try:
+        return Target(name)
+    except ValueError:
+        valid = ", ".join(str(target) for target in Target)
+        raise argparse.ArgumentTypeError(f"invalid target '{name}' (choose from {valid})") from None
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("targets", type=Target, choices=list(Target), nargs="*")
-    parser.add_argument("--all", action="store_true", help="download every target")
+    # Naming nothing downloads everything, rather than being an error corrected by a separate
+    # --all flag: someone who has not chosen a target wants the whole set, and a flag whose only
+    # job is to say "yes, the obvious thing" is one more way to get the command wrong.
+    parser.add_argument(
+        "targets",
+        type=target_named,
+        nargs="*",
+        metavar="TARGET",
+        help="targets to download (default: every target)",
+    )
     parser.add_argument(
         "--version",
         default="latest",
@@ -154,11 +176,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    targets = list(Target) if args.all else args.targets
-    if not targets:
-        parser.error("name at least one target, or pass --all")
-
-    for target in targets:
+    for target in args.targets or list(Target):
         download(target, args.version)
 
 

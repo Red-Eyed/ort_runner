@@ -94,7 +94,7 @@ _image target:
 # developer's cost -- the run-dev-* recipes below are for that.
 
 # Download released binaries. Defaults to every target; name targets to narrow it.
-download-prebuilt *targets="--all":
+download-prebuilt *targets:
     uv run scripts/download_prebuilt.py {{targets}}
 
 run-linux-x64 model *args:
