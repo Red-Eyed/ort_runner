@@ -69,8 +69,9 @@ anstyle = "1.0"
 android_system_properties = "0.1"
 
 [lints.rust]
-# Exactly one unsafe block is expected (getrusage, for peak RSS -- sysinfo only exposes
-# current RSS). Warning on it keeps any second one from arriving unnoticed.
+# Exactly two unsafe blocks are expected: getrusage, for peak RSS (sysinfo only exposes current
+# RSS), and _exit, to leave before a process-exit teardown that aborts on Android. Warning on
+# them keeps any third from arriving unnoticed.
 unsafe_code = "warn"
 missing_debug_implementations = "warn"
 

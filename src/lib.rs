@@ -28,5 +28,6 @@ pub mod paths;
 pub mod profile;
 pub mod report;
 pub mod session;
+pub mod shutdown;
 pub mod stats;
 pub mod tensors;

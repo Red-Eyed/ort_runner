@@ -146,8 +146,8 @@ pub fn smaps_field(text: &str, key: &str) -> Option<u64> {
 /// at one instant cannot.
 #[must_use]
 pub fn peak_rss_bytes() -> Fact<u64> {
-    // SAFETY: the single sanctioned unsafe block in this crate -- see the `unsafe_code = "warn"`
-    // note in Cargo.toml, which exists so a second one cannot arrive unnoticed. `getrusage`
+    // SAFETY: one of the two sanctioned unsafe blocks in this crate -- see the
+    // `unsafe_code = "warn"` note in Cargo.toml, and `shutdown` for the other. `getrusage`
     // fully initialises the `struct rusage` it is handed and returns 0 on success. The pointer
     // comes from a live, correctly sized and correctly aligned `MaybeUninit<rusage>` that
     // outlives the call, and `assume_init` is reached only once that success is confirmed, so

@@ -5,16 +5,23 @@ use clap::Parser;
 
 use ort_runner::cli::Cli;
 use ort_runner::{
-    bench, config, dylib, host, info, model, profile, report, session, stats, tensors,
+    bench, config, dylib, host, info, model, profile, report, session, shutdown, stats, tensors,
 };
 
 fn main() {
-    if let Err(err) = run() {
-        // `{err:#}` renders the whole anyhow context chain, so a failure deep in the stack still
-        // explains which step it happened in.
-        eprintln!("error: {err:#}");
-        std::process::exit(1);
-    }
+    let code = match run() {
+        Ok(()) => 0,
+        Err(err) => {
+            // `{err:#}` renders the whole anyhow context chain, so a failure deep in the stack
+            // still explains which step it happened in.
+            eprintln!("error: {err:#}");
+            1
+        }
+    };
+
+    // Never `return` or `std::process::exit` from here: both hand control to the process-exit
+    // teardown that aborts on Android. See `shutdown`.
+    shutdown::immediately(code);
 }
 
 fn run() -> Result<()> {
