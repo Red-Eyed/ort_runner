@@ -4,6 +4,30 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-07-20
+
+### Added
+
+- **`--iteration-timeout <seconds>`** (default `10`, `0` disables), bounding how long a single
+  inference may take. An inference that never returns previously took the whole run with it —
+  no statistics, no report, and nothing to say which stage was at fault. The limit is per
+  inference rather than per run, because total runtime is already chosen through `--iterations`;
+  a limit on the whole run would eventually cut short a long benchmark behaving exactly as asked.
+  The value is recorded in the report's `bench_config`.
+
+  Overruns are terminated through ONNX Runtime rather than by killing the process, so they
+  surface as an ordinary error naming the flag that set the limit.
+
+  It does **not** cover model loading or execution-provider initialisation, which happen before
+  there is any inference to abandon. A provider that hangs while initialising its device — as
+  `--provider webgpu` does with quantized models on Adreno hardware — is not caught by this.
+
+### Changed
+
+- **A model taking longer than 10 seconds per inference now fails by default** rather than
+  running to completion. Raise the limit or pass `--iteration-timeout 0` to restore the previous
+  behaviour.
+
 ## [0.4.1] - 2026-07-20
 
 ### Fixed
@@ -140,6 +164,7 @@ changed is how the measurement is taken, what it reports about memory, and how y
 - Toolchain images obtain cmake and ninja from PyPI (in an isolated venv) so every target uses
   the same modern cmake regardless of the base distro's package age.
 
+[0.5.0]: https://github.com/Red-Eyed/ort_runner/releases/tag/v0.5.0
 [0.4.1]: https://github.com/Red-Eyed/ort_runner/releases/tag/v0.4.1
 [0.4.0]: https://github.com/Red-Eyed/ort_runner/releases/tag/v0.4.0
 [0.3.0]: https://github.com/Red-Eyed/ort_runner/releases/tag/v0.3.0

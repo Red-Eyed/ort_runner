@@ -93,8 +93,8 @@ python3 scripts/run_android.py --source prebuilt android-arm64 model.onnx
 Or skip the repo entirely — unpack a release zip and run the binary directly:
 
 ```bash
-unzip ort_runner-v0.4.1-linux-aarch64-ort1.27.0.zip
-cd    ort_runner-v0.4.1-linux-aarch64-ort1.27.0
+unzip ort_runner-v0.5.0-linux-aarch64-ort1.27.0.zip
+cd    ort_runner-v0.5.0-linux-aarch64-ort1.27.0
 ./ort_runner --model model.onnx
 ```
 

@@ -1,6 +1,6 @@
 [package]
 name = "ort_runner"
-version = "0.4.1"
+version = "0.5.0"
 edition = "2024"
 rust-version = "1.85"
 description = "Benchmark ONNX Runtime inference on Linux and Android, with auto-generated input tensors"
