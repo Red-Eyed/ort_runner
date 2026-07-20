@@ -37,6 +37,33 @@ def push_host_file(local: Path) -> str:
     return remote
 
 
+def device_dir_exists(remote: str) -> bool:
+    probe = subprocess.run(["adb", "shell", "test", "-d", remote], check=False)
+    return probe.returncode == 0
+
+
+def pull_artifacts(bin_dir: Path) -> None:
+    """Bring the run's output directories back from the device.
+
+    ort_runner anchors reports/ and ort_profiler/ to its own location rather than to the working
+    directory, which on a device means DEVICE_DIR. Pulling them beside the host-side binary
+    reproduces the layout a local run leaves behind, so a result is found the same way whether it
+    was measured here or on a phone.
+
+    Everything is pulled, not just this run's output: a report is only worth keeping because
+    getting a device back into the state that produced it is the expensive part, and that argues
+    for retrieving whatever is there rather than reasoning about which file is new.
+    """
+    for name in ("reports", "ort_profiler"):
+        remote = f"{DEVICE_DIR}/{name}"
+        # ort_profiler/ only exists when --profile asked for it, and a missing directory is the
+        # normal case rather than a failure.
+        if not device_dir_exists(remote):
+            continue
+        subprocess.run(["adb", "pull", remote, str(bin_dir)], check=True)
+        print(f"pulled {name}/ to {bin_dir / name}")
+
+
 def to_device_arg(arg: str) -> str:
     """Rewrite an arg naming an existing host file to its pushed device path; leave others as-is."""
     path = Path(arg)
@@ -162,7 +189,13 @@ def main() -> None:
     command = [f"{DEVICE_DIR}/ort_runner", "--model", device_model, *device_args]
     environment = f"LD_LIBRARY_PATH={DEVICE_DIR} ADSP_LIBRARY_PATH={DEVICE_DIR}"
     remote_command = f"{environment} {shlex.join(command)}"
-    subprocess.run(["adb", "shell", remote_command], check=True)
+
+    # Pulled even when the run fails: a benchmark that got far enough to write a profile, or that
+    # died after earlier runs left reports behind, should not strand them on the device.
+    try:
+        subprocess.run(["adb", "shell", remote_command], check=True)
+    finally:
+        pull_artifacts(bin_dir)
 
 
 if __name__ == "__main__":

@@ -224,6 +224,10 @@ adb devices
 just run-android-arm64 model.onnx --dim batch=1 --provider nnapi
 ```
 
+The JSON report and any profiler trace are pulled back afterwards, landing in `reports/` and
+`ort_profiler/` beside the binary — the same layout a local run leaves behind, so a result is
+found the same way wherever it was measured. They come back even if the run itself fails.
+
 A run reports its progress on stderr as it goes, so a slow model is distinguishable from a hang.
 On a terminal that is a bar; everywhere else — including a device, since `adb shell` presents no
 terminal — it is one line per 10% of iterations, which stays readable in a captured log. Control
