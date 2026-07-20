@@ -11,14 +11,16 @@
 //! statistics -- a cold start must not show up as tail latency -- but they are the only evidence
 //! of how expensive the first inference is, which matters for anything run once per user action.
 
+use std::sync::Arc;
 use std::time::Instant;
 
-use anyhow::{Context, Result};
-use ort::session::{Session, SessionInputValue};
+use anyhow::{anyhow, Context, Result};
+use ort::session::{RunOptions, Session, SessionInputValue};
 use serde::Serialize;
 
 use crate::config::BenchConfig;
 use crate::tensors::PreparedInput;
+use crate::watchdog::Watchdog;
 
 /// Per-iteration timings from one benchmark run, in milliseconds.
 ///
@@ -42,12 +44,44 @@ pub fn run(
     inputs: &[PreparedInput],
     config: BenchConfig,
 ) -> Result<Timings> {
-    let warmup_ms = iterate(session, inputs, config.warmup, "warmup")?;
-    let measured_ms = iterate(session, inputs, config.iterations, "measured")?;
+    let run_options = Arc::new(RunOptions::new().context("creating run options")?);
+    let watchdog = arm_watchdog(&run_options, config);
+
+    let warmup_ms = iterate(
+        session,
+        inputs,
+        config.warmup,
+        "warmup",
+        &run_options,
+        &watchdog,
+    )?;
+    let measured_ms = iterate(
+        session,
+        inputs,
+        config.iterations,
+        "measured",
+        &run_options,
+        &watchdog,
+    )?;
 
     Ok(Timings {
         warmup_ms,
         measured_ms,
+    })
+}
+
+/// A watchdog that abandons an inference exceeding the configured budget.
+///
+/// Terminating through `RunOptions` rather than killing the process means the overrun surfaces as
+/// an ordinary error, so the failure is reported the same way any other inference failure is.
+fn arm_watchdog(run_options: &Arc<RunOptions>, config: BenchConfig) -> Watchdog {
+    let Some(budget) = config.iteration_timeout() else {
+        return Watchdog::disabled();
+    };
+
+    let terminable = Arc::clone(run_options);
+    Watchdog::arm(budget, move || {
+        let _ = terminable.terminate();
     })
 }
 
@@ -57,6 +91,8 @@ fn iterate(
     inputs: &[PreparedInput],
     count: u64,
     phase: &str,
+    run_options: &RunOptions,
+    watchdog: &Watchdog,
 ) -> Result<Vec<f64>> {
     let mut samples = Vec::with_capacity(usize::try_from(count).unwrap_or(0));
 
@@ -66,11 +102,20 @@ fn iterate(
         // inference cost.
         let feeds = borrow_inputs(inputs);
 
+        let in_flight = watchdog.iteration();
         let start = Instant::now();
-        let outputs = session
-            .run(feeds)
-            .with_context(|| format!("{phase} iteration {index} failed"))?;
+        let result = session.run_with_options(feeds, run_options);
         let elapsed = start.elapsed();
+        drop(in_flight);
+
+        // Checked before the error is reported: a terminated run fails with ONNX Runtime's own
+        // "terminate flag" message, which describes the mechanism rather than the cause.
+        let outputs = result.map_err(|err| {
+            if watchdog.fired() {
+                return timed_out(phase, index, elapsed);
+            }
+            anyhow::Error::new(err).context(format!("{phase} iteration {index} failed"))
+        })?;
 
         // Dropped after the clock stops. Freeing the output tensors is not part of inference,
         // and it must happen before the next call regardless -- the outputs hold the session's
@@ -81,6 +126,21 @@ fn iterate(
     }
 
     Ok(samples)
+}
+
+/// The error for an inference that outlived its budget.
+///
+/// Names the flag that set the limit and the provider question behind most real overruns, because
+/// the useful next step is either to raise the budget or to stop using an execution provider that
+/// cannot run this graph.
+fn timed_out(phase: &str, index: u64, elapsed: std::time::Duration) -> anyhow::Error {
+    anyhow!(
+        "{phase} iteration {index} exceeded its time budget and was abandoned after {:.1}s. \
+         Raise or remove the limit with --iteration-timeout <seconds> (0 disables it), or try a \
+         different --provider: an execution provider that cannot run this graph is the usual \
+         cause.",
+        elapsed.as_secs_f64()
+    )
 }
 
 /// Borrows every prepared input as a session feed.

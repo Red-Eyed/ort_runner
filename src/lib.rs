@@ -31,3 +31,4 @@ pub mod session;
 pub mod shutdown;
 pub mod stats;
 pub mod tensors;
+pub mod watchdog;

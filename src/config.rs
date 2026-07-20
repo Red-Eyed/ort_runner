@@ -58,6 +58,20 @@ pub struct BenchConfig {
     pub warmup: u64,
     /// Timed iterations the statistics are computed over.
     pub iterations: u64,
+    /// Seconds one inference may take before the run is abandoned; 0 means unbounded. Recorded
+    /// because a run that was cut short and one that was never at risk are different measurements.
+    pub iteration_timeout_secs: u64,
+}
+
+impl BenchConfig {
+    /// The per-inference budget, or `None` when the limit is disabled.
+    #[must_use]
+    pub fn iteration_timeout(&self) -> Option<std::time::Duration> {
+        match self.iteration_timeout_secs {
+            0 => None,
+            seconds => Some(std::time::Duration::from_secs(seconds)),
+        }
+    }
 }
 
 impl RunConfig {
@@ -91,6 +105,7 @@ impl From<&Cli> for BenchConfig {
         Self {
             warmup: cli.warmup,
             iterations: cli.iterations,
+            iteration_timeout_secs: cli.iteration_timeout,
         }
     }
 }

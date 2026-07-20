@@ -339,6 +339,7 @@ mod tests {
             bench_config: BenchConfig {
                 warmup: 3,
                 iterations: 100,
+                iteration_timeout_secs: 10,
             },
             system: SystemInfo {
                 ort_runner_version: "0.3.0".into(),

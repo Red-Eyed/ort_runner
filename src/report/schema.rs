@@ -112,7 +112,10 @@ const FIELDS: &[(&str, &str)] = &[
     ),
     (
         "bench_config",
-        "The measurement protocol: warmup iteration count and measured iteration count.",
+        "The measurement protocol: warmup iteration count, measured iteration count, and the \
+         per-inference time budget. A run only produces a report if every iteration finished \
+         inside that budget, so its presence here says what the numbers were allowed to be, not \
+         what they were.",
     ),
     (
         "system",

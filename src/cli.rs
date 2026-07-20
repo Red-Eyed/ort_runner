@@ -142,6 +142,13 @@ pub struct Cli {
     #[arg(long, default_value_t = 100, value_parser = clap::value_parser!(u64).range(1..))]
     pub iterations: u64,
 
+    /// Seconds a single inference may take before the run is abandoned; 0 disables the limit.
+    /// Guards against a model or execution provider that never returns, which would otherwise
+    /// cost the whole run with nothing to show for it. Does not cover model loading or provider
+    /// initialisation, which happen before any inference exists to abandon.
+    #[arg(long, default_value_t = 10)]
+    pub iteration_timeout: u64,
+
     /// Intra-op thread count; left at ONNX Runtime's own default if not passed.
     #[arg(long)]
     pub threads: Option<usize>,
