@@ -22,10 +22,54 @@ use serde::Serialize;
 use crate::cli::Provider;
 use platform::{DeviceIdentity, DeviceProbe};
 
-#[derive(Debug, Clone, Copy, Serialize)]
+/// Whether a provider can be used, carrying why not when it cannot.
+///
+/// A bare `bool` says a provider is unusable without saying what would make it usable, which is
+/// the part a reader needs: "not in this build" and "not on this hardware" look identical as a
+/// `no` and call for entirely different responses. This mirrors [`platform::Absent`], which
+/// already refused to let a missing device fact collapse into an unexplained blank.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case", tag = "status")]
+pub enum Availability {
+    Available,
+    Unavailable { reason: String },
+}
+
+impl Availability {
+    pub fn unavailable(reason: impl Into<String>) -> Self {
+        Availability::Unavailable {
+            reason: reason.into(),
+        }
+    }
+
+    /// The verdict for a provider whose only condition is presence in the loaded runtime.
+    #[must_use]
+    pub fn from_build_support(present: bool) -> Self {
+        if present {
+            Availability::Available
+        } else {
+            Availability::unavailable("the loaded onnxruntime does not contain it")
+        }
+    }
+
+    #[must_use]
+    pub fn is_available(&self) -> bool {
+        matches!(self, Availability::Available)
+    }
+
+    #[must_use]
+    pub fn reason(&self) -> Option<&str> {
+        match self {
+            Availability::Available => None,
+            Availability::Unavailable { reason } => Some(reason),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
 pub struct ProviderStatus {
     pub provider: Provider,
-    pub available: bool,
+    pub availability: Availability,
 }
 
 /// A compute device as ONNX Runtime itself sees it.
@@ -125,9 +169,9 @@ pub fn provider_statuses() -> Result<Vec<ProviderStatus>> {
     ];
     Ok(checks
         .into_iter()
-        .map(|(provider, available)| ProviderStatus {
+        .map(|(provider, present)| ProviderStatus {
             provider,
-            available,
+            availability: Availability::from_build_support(present),
         })
         .collect())
 }

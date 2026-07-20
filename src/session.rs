@@ -10,6 +10,7 @@ use ort::session::Session;
 
 use crate::cli::{ExecutionMode, GraphOptLevel, LogSeverity, Provider};
 use crate::config::RunConfig;
+use crate::info::Availability;
 
 /// Discards a session-builder error's recovery handle.
 ///
@@ -89,9 +90,9 @@ fn providers(config: &RunConfig) -> Result<Vec<ExecutionProviderDispatch>> {
 
     let preferred = match config.provider {
         Provider::Cpu => return Ok(vec![cpu]),
-        Provider::Nnapi => require_available(Provider::Nnapi, NNAPI::default())?,
-        Provider::Xnnpack => require_available(Provider::Xnnpack, XNNPACK::default())?,
-        Provider::Webgpu => require_available(Provider::Webgpu, WebGPU::default())?,
+        Provider::Nnapi => require_in_build(Provider::Nnapi, NNAPI::default())?,
+        Provider::Xnnpack => require_in_build(Provider::Xnnpack, XNNPACK::default())?,
+        Provider::Webgpu => require_in_build(Provider::Webgpu, WebGPU::default())?,
     };
 
     // ONNX Runtime's default is to log a failed registration and fall back to CPU. For a
@@ -108,18 +109,24 @@ fn providers(config: &RunConfig) -> Result<Vec<ExecutionProviderDispatch>> {
 /// went stale without anyone noticing: a comment asserted XNNPACK was available in the Linux
 /// prebuilts, but those ship no XNNPACK kernels, so the flag could never have worked there.
 /// Asking the runtime cannot drift, and it stays correct if the bundled `.so` is swapped.
-fn require_available<E>(provider: Provider, ep: E) -> Result<ExecutionProviderDispatch>
+fn require_in_build<E>(provider: Provider, ep: E) -> Result<ExecutionProviderDispatch>
 where
     E: ExecutionProvider + Into<ExecutionProviderDispatch>,
 {
-    if !ep.is_available()? {
-        return Err(anyhow!(
-            "execution provider '{}' is not available in the loaded onnxruntime. \
-             Run --info to see what this build supports.",
-            crate::info::provider_name(provider)
-        ));
+    let availability = Availability::from_build_support(ep.is_available()?);
+    match availability.reason() {
+        None => Ok(ep.into()),
+        Some(reason) => Err(unusable(provider, reason)),
     }
-    Ok(ep.into())
+}
+
+/// The error a run exits with when its provider cannot be used, carrying the reason it cannot.
+fn unusable(provider: Provider, reason: &str) -> anyhow::Error {
+    anyhow!(
+        "execution provider '{}' cannot be used: {reason}. \
+         Run --info to see what this build and device support.",
+        crate::info::provider_name(provider)
+    )
 }
 
 fn optimization_level(level: GraphOptLevel) -> GraphOptimizationLevel {

@@ -65,10 +65,11 @@ fn render_human(info: &SystemInfo) {
     section("execution providers");
     for status in &info.providers {
         let name = provider_name(status.provider);
-        if status.available {
-            anstream::println!("  {GOOD}yes{GOOD:#}  {name}");
-        } else {
-            anstream::println!("  {ABSENT}no   {name}{ABSENT:#}");
+        // The reason is printed rather than summarised: a provider can be missing for reasons
+        // that need opposite responses from the reader, and "no" alone cannot tell them apart.
+        match status.availability.reason() {
+            None => anstream::println!("  {GOOD}yes{GOOD:#}  {name}"),
+            Some(reason) => anstream::println!("  {ABSENT}no   {name} ({reason}){ABSENT:#}"),
         }
     }
 

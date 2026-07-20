@@ -25,6 +25,16 @@ All notable changes to this project are documented here. The format is based on
   parser with the display on. The setting is not recorded in the report: it is a view of a run,
   not a property of the measurement.
 
+### Changed
+
+- **An unavailable execution provider now reports why it is unavailable**, in `--info` and in the
+  error a rejected run exits with. Availability used to be a bool, which said a provider was
+  unusable without saying what would make it usable — and "not in this build" and "not on this
+  hardware" are the same `no` while calling for entirely different responses.
+
+  In the JSON report, `providers[].available: bool` becomes `providers[].availability`, an object
+  with `status` and, when unavailable, `reason`.
+
 ### Fixed
 
 - **A provider that fails to register no longer silently benchmarks on CPU.** ONNX Runtime's
