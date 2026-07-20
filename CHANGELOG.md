@@ -27,6 +27,15 @@ All notable changes to this project are documented here. The format is based on
 
 ### Changed
 
+- **android-arm64 now bundles the `onnxruntime-android-qnn` AAR** instead of the stock one. It is
+  the only artifact Microsoft publishes with the QNN execution provider compiled in, and it exists
+  for `arm64-v8a` alone; armv7 and x86_64 stay on the stock AAR. Nothing is lost by the swap — the
+  QNN build still contains CPU, NNAPI, XNNPACK and WebGPU — so devices that cannot run QNN are
+  unaffected.
+
+  QNN cannot be added to a runtime at load time: no `libonnxruntime_providers_qnn.so` is published
+  for Android, so the provider has to be inside the `.so` the binary ships with.
+
 - **An unavailable execution provider now reports why it is unavailable**, in `--info` and in the
   error a rejected run exits with. Availability used to be a bool, which said a provider was
   unusable without saying what would make it usable — and "not in this build" and "not on this

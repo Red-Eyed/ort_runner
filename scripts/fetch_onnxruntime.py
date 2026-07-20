@@ -30,10 +30,27 @@ ORT_VERSION = "1.27.0"
 SDK_ROOT = REPO_ROOT / "sdk"
 
 _GITHUB_RELEASE = f"https://github.com/microsoft/onnxruntime/releases/download/v{ORT_VERSION}"
-_MAVEN_AAR = (
-    "https://repo1.maven.org/maven2/com/microsoft/onnxruntime/onnxruntime-android/"
-    f"{ORT_VERSION}/onnxruntime-android-{ORT_VERSION}.aar"
-)
+
+
+def _maven_aar(artifact: str) -> str:
+    return (
+        f"https://repo1.maven.org/maven2/com/microsoft/onnxruntime/{artifact}/"
+        f"{ORT_VERSION}/{artifact}-{ORT_VERSION}.aar"
+    )
+
+
+# The stock AAR, built without QNN. Ships every ABI.
+_MAVEN_AAR = _maven_aar("onnxruntime-android")
+
+# The QNN variant, used for arm64 only -- it is the sole artifact Microsoft publishes with the QNN
+# execution provider compiled in, and it exists for arm64-v8a alone. It is a strict superset of the
+# stock build's providers (CPU, NNAPI, XNNPACK and WebGPU are all still there), so arm64 loses
+# nothing by taking it; the other two ABIs stay on the stock AAR because no QNN build exists for
+# them.
+#
+# It bundles no Qualcomm libraries: QNN reaches the NPU through libQnnHtp.so from the QAIRT SDK,
+# which cannot be redistributed.
+_MAVEN_AAR_QNN = _maven_aar("onnxruntime-android-qnn")
 
 
 # Written into each unpacked dist, recording the URL it came from.
@@ -88,7 +105,7 @@ _DISTS: dict[Target, TarballDist | AarDist] = {
         dest=SDK_ROOT / "onnxruntime-linux-aarch64",
     ),
     Target.ANDROID_ARM64: AarDist(
-        url=_MAVEN_AAR,
+        url=_MAVEN_AAR_QNN,
         dest=SDK_ROOT / "onnxruntime-android-arm64",
         abi="arm64-v8a",
     ),
