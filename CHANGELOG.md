@@ -4,6 +4,23 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2026-07-20
+
+### Fixed
+
+- **Abort at exit on Android**, after the run had completed and the report had been printed
+  (`FORTIFY: pthread_mutex_lock called on destroyed mutex`). ONNX Runtime requires `ReleaseEnv` to
+  precede the static destructors in `libonnxruntime.so`; the C++ implementation retired in 0.3.0
+  guaranteed that by destroying its `Ort::Env` at the end of `main`, whereas the `ort` crate must
+  keep the environment alive for the process and defers `ReleaseEnv` to a `.fini_array` handler
+  that runs alongside those destructors. The process now flushes its output and exits immediately
+  once the report is written, so that phase is never entered. Only bionic checks for this, which is
+  why Linux never showed it.
+
+  This diagnosis is drawn from the ONNX Runtime and `ort` sources rather than from a device
+  backtrace, and the fix is a mitigation in this tool rather than a cure in `ort`. The symptom it
+  addresses is well established; the mechanism behind it is the best available explanation.
+
 ## [0.4.0] - 2026-07-20
 
 ### Changed
@@ -123,6 +140,7 @@ changed is how the measurement is taken, what it reports about memory, and how y
 - Toolchain images obtain cmake and ninja from PyPI (in an isolated venv) so every target uses
   the same modern cmake regardless of the base distro's package age.
 
+[0.4.1]: https://github.com/Red-Eyed/ort_runner/releases/tag/v0.4.1
 [0.4.0]: https://github.com/Red-Eyed/ort_runner/releases/tag/v0.4.0
 [0.3.0]: https://github.com/Red-Eyed/ort_runner/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Red-Eyed/ort_runner/releases/tag/v0.2.0
