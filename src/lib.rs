@@ -27,6 +27,7 @@ pub mod model;
 pub mod paths;
 pub mod profile;
 pub mod progress;
+pub mod qnn;
 pub mod report;
 pub mod session;
 pub mod shutdown;

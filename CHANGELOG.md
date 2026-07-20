@@ -25,6 +25,13 @@ All notable changes to this project are documented here. The format is based on
   parser with the display on. The setting is not recorded in the report: it is a view of a run,
   not a property of the measurement.
 
+- **`--provider qnn`**, Qualcomm's NPU execution provider, on android-arm64.
+
+  Unlike every other provider, being present in the runtime is not enough for QNN to run: it also
+  needs a Snapdragon SoC and `libQnnHtp.so` from Qualcomm's QAIRT SDK. Each of those three
+  conditions reports its own reason when it fails, because only one of them is fixable and they
+  are fixed in different ways.
+
 ### Changed
 
 - **android-arm64 now bundles the `onnxruntime-android-qnn` AAR** instead of the stock one. It is

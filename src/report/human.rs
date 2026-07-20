@@ -129,7 +129,7 @@ fn print_memory(report: &BenchReport) {
     // run on those providers must not be read as a complete memory picture.
     if matches!(
         report.config.provider,
-        crate::cli::Provider::Nnapi | crate::cli::Provider::Webgpu
+        crate::cli::Provider::Nnapi | crate::cli::Provider::Webgpu | crate::cli::Provider::Qnn
     ) {
         anstream::println!(
             "  {WARN}note{WARN:#} this provider allocates outside the process; \

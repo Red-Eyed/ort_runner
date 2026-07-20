@@ -163,7 +163,21 @@ ort_runner --model model.onnx --provider nnapi
 ```
 
 Availability is probed at runtime, never assumed at compile time, so this reports what your build
-genuinely supports rather than what it was expected to.
+genuinely supports rather than what it was expected to. A provider that is unavailable says *why*
+— which matters most for `qnn`, where "not in this build", "this phone is not a Snapdragon" and
+"the backend library is missing" call for completely different responses:
+
+```console
+$ ort_runner --model model.onnx --provider qnn
+error: execution provider 'qnn' cannot be used: QNN runs only on Qualcomm Snapdragon, because its
+backend drives the Hexagon DSP. This device reports a Samsung Exynos SoC (s5e9945), which has no
+such DSP, so no version of the QNN backend can target it. Use --provider nnapi for this device's
+accelerator.
+```
+
+A provider that *is* available but fails to register aborts the run rather than falling back to
+CPU. ONNX Runtime's default is to log and fall back, which for a benchmark is the worst case: a
+latency number for a provider that never ran, looking entirely ordinary.
 
 **Tune threading.** Unset means ONNX Runtime's own default, which is not the same as any specific
 number:
@@ -241,9 +255,16 @@ own x86_64 toolchain, because `rustc` segfaults under QEMU.
 - **There is no CI**; releases are cut from a developer machine with `just release`. Android
   binaries are checked for ELF architecture and bundling at build time, but on-device runs are
   manual.
-- **Memory figures cover this process only.** Under `--provider nnapi` or `webgpu`, allocations
-  happen in a vendor HAL or GPU driver where `/proc` cannot see them; the numbers are complete for
-  `cpu` and `xnnpack`.
+- **Memory figures cover this process only.** Under `--provider nnapi`, `webgpu` or `qnn`,
+  allocations happen in a vendor HAL, a GPU driver or the Hexagon DSP where `/proc` cannot see
+  them; the numbers are complete for `cpu` and `xnnpack`.
+- **QNN is android-arm64 only, and needs libraries this project cannot ship.** It exists only in
+  Microsoft's `onnxruntime-android-qnn` AAR, which is published for `arm64-v8a` alone — so that is
+  the build android-arm64 bundles (a strict superset of the stock one: CPU, NNAPI, XNNPACK and
+  WebGPU are all still there). The backend itself, `libQnnHtp.so`, comes from Qualcomm's QAIRT SDK
+  under a licence that forbids redistribution, so it must be supplied separately. And it runs on
+  Snapdragon only — Exynos, Dimensity and Tensor devices have no Hexagon DSP for it to target, and
+  should use `nnapi`.
 - **Synthesized inputs are type- and shape-correct, not representative.** Random integer inputs
   are clamped to `[0, --int-fill-max]` (default 15) because index inputs blow up on out-of-range
   values — a mitigation, not a fix, since only you know the real vocabulary size. When it bites,

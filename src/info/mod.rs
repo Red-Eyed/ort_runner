@@ -24,10 +24,12 @@ use platform::{DeviceIdentity, DeviceProbe};
 
 /// Whether a provider can be used, carrying why not when it cannot.
 ///
-/// A bare `bool` says a provider is unusable without saying what would make it usable, which is
-/// the part a reader needs: "not in this build" and "not on this hardware" look identical as a
-/// `no` and call for entirely different responses. This mirrors [`platform::Absent`], which
-/// already refused to let a missing device fact collapse into an unexplained blank.
+/// A bare `bool` was enough while every provider's availability was one question with one
+/// answer -- "is it in the loaded runtime?" -- and a `no` beside the name said everything there
+/// was to say. QNN broke that: it can be absent because the build lacks it, because the device
+/// is not Qualcomm, or because its backend library was never copied over, and those call for
+/// three different responses from whoever is reading. The reason travels with the verdict so
+/// the distinction survives into both `--info` and the error a rejected run exits with.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "snake_case", tag = "status")]
 pub enum Availability {
@@ -128,7 +130,7 @@ pub fn gather(probe: &dyn DeviceProbe, dylib_path: &Path) -> Result<SystemInfo> 
         platform: probe.platform().to_string(),
         device: probe.identity(),
         host: host_info(),
-        providers: provider_statuses()?,
+        providers: provider_statuses(probe)?,
         runtime_devices: runtime_devices(),
     })
 }
@@ -158,22 +160,33 @@ fn host_info() -> HostInfo {
 
 /// Availability of every provider this binary knows how to register.
 ///
+/// Four of the five are decided entirely by the loaded runtime. QNN is not -- it also depends on
+/// the silicon and on a library nobody is allowed to redistribute -- so it asks `crate::qnn`
+/// instead of `is_available`, and needs the device probe the others do not.
+///
 /// # Errors
 /// If the loaded runtime rejects an availability query.
-pub fn provider_statuses() -> Result<Vec<ProviderStatus>> {
-    let checks: [(Provider, bool); 4] = [
+pub fn provider_statuses(probe: &dyn DeviceProbe) -> Result<Vec<ProviderStatus>> {
+    let in_build: [(Provider, bool); 4] = [
         (Provider::Cpu, CPU::default().is_available()?),
         (Provider::Nnapi, NNAPI::default().is_available()?),
         (Provider::Xnnpack, XNNPACK::default().is_available()?),
         (Provider::Webgpu, WebGPU::default().is_available()?),
     ];
-    Ok(checks
+
+    let mut statuses: Vec<ProviderStatus> = in_build
         .into_iter()
         .map(|(provider, present)| ProviderStatus {
             provider,
             availability: Availability::from_build_support(present),
         })
-        .collect())
+        .collect();
+
+    statuses.push(ProviderStatus {
+        provider: Provider::Qnn,
+        availability: crate::qnn::availability(probe)?,
+    });
+    Ok(statuses)
 }
 
 /// Devices ONNX Runtime enumerates. Empty on a runtime built without device discovery, which

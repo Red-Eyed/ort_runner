@@ -241,10 +241,10 @@ const FIELDS: &[(&str, &str)] = &[
 const CAVEATS: &[&str] = &[
     "A null or absent value means the platform did not expose that measurement. It does NOT mean \
      zero, and must not be reported as zero.",
-    "Memory figures cover this process only. With --provider nnapi or --provider webgpu, \
-     allocations happen in a vendor HAL or GPU driver, outside this process, where /proc cannot \
-     see them; the memory numbers are complete for the cpu and xnnpack providers only. Say so if \
-     the provider is nnapi or webgpu.",
+    "Memory figures cover this process only. With --provider nnapi, --provider webgpu or \
+     --provider qnn, allocations happen in a vendor HAL, a GPU driver or the Hexagon DSP, \
+     outside this process, where /proc cannot see them; the memory numbers are complete for the \
+     cpu and xnnpack providers only. Say so if the provider is nnapi, webgpu or qnn.",
     "Percentiles are nearest-rank, so every one is a latency that actually occurred rather than \
      an interpolated estimate. They are not directly comparable with tools that interpolate \
      (numpy.percentile's default, statrs, R type-7).",

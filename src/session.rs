@@ -10,7 +10,9 @@ use ort::session::Session;
 
 use crate::cli::{ExecutionMode, GraphOptLevel, LogSeverity, Provider};
 use crate::config::RunConfig;
+use crate::info::platform;
 use crate::info::Availability;
+use crate::qnn::Readiness;
 
 /// Discards a session-builder error's recovery handle.
 ///
@@ -93,6 +95,13 @@ fn providers(config: &RunConfig) -> Result<Vec<ExecutionProviderDispatch>> {
         Provider::Nnapi => require_in_build(Provider::Nnapi, NNAPI::default())?,
         Provider::Xnnpack => require_in_build(Provider::Xnnpack, XNNPACK::default())?,
         Provider::Webgpu => require_in_build(Provider::Webgpu, WebGPU::default())?,
+        // QNN is the one provider the runtime alone cannot vouch for; `crate::qnn` also asks the
+        // device, and hands back the backend library it verified so the session is configured
+        // with the same file that was checked rather than one derived a second time.
+        Provider::Qnn => match crate::qnn::readiness(&*platform::probe())? {
+            Readiness::Ready { backend } => crate::qnn::execution_provider(&backend).into(),
+            Readiness::NotReady { reason } => return Err(unusable(Provider::Qnn, &reason)),
+        },
     };
 
     // ONNX Runtime's default is to log a failed registration and fall back to CPU. For a
@@ -109,6 +118,9 @@ fn providers(config: &RunConfig) -> Result<Vec<ExecutionProviderDispatch>> {
 /// went stale without anyone noticing: a comment asserted XNNPACK was available in the Linux
 /// prebuilts, but those ship no XNNPACK kernels, so the flag could never have worked there.
 /// Asking the runtime cannot drift, and it stays correct if the bundled `.so` is swapped.
+///
+/// This answers a question about the *build*, which is the whole story for these providers but
+/// not for QNN -- see `crate::qnn` for why that one needs the device asked as well.
 fn require_in_build<E>(provider: Provider, ep: E) -> Result<ExecutionProviderDispatch>
 where
     E: ExecutionProvider + Into<ExecutionProviderDispatch>,
