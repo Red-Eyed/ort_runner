@@ -220,6 +220,9 @@ The `run-*` recipes deliberately use released binaries; `run-dev-*` uses your lo
 binary produced a measurement is never left implicit — a stale download beside a fresh build would
 otherwise attribute numbers to the wrong one.
 
+Everything above lives in `dev.just`, leaving the Justfile itself to the `run-*` recipes that need
+no toolchain. It is imported rather than namespaced, so recipes are invoked the same either way.
+
 The pinned ONNX Runtime is fetched automatically on first build, and is always Microsoft's
 official prebuilt binary — never built from source.
 
