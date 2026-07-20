@@ -25,6 +25,14 @@ All notable changes to this project are documented here. The format is based on
   parser with the display on. The setting is not recorded in the report: it is a view of a run,
   not a property of the measurement.
 
+### Fixed
+
+- **A provider that fails to register no longer silently benchmarks on CPU.** ONNX Runtime's
+  default is to log the failure and fall back, so a run could report a latency for a provider that
+  never executed a single operator — a wrong number that looks completely ordinary. The requested
+  provider is now registered with `error_on_failure`, making the fallback impossible rather than
+  merely visible. The CPU provider appended after it stays a fallback, which is its purpose.
+
 ## [0.5.0] - 2026-07-20
 
 ### Added

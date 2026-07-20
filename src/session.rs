@@ -94,7 +94,12 @@ fn providers(config: &RunConfig) -> Result<Vec<ExecutionProviderDispatch>> {
         Provider::Webgpu => require_available(Provider::Webgpu, WebGPU::default())?,
     };
 
-    Ok(vec![preferred, cpu])
+    // ONNX Runtime's default is to log a failed registration and fall back to CPU. For a
+    // benchmark that is the worst possible behaviour: it reports a latency for a provider that
+    // never ran, and the number looks entirely ordinary. Erroring makes the fallback impossible
+    // rather than merely visible. Only the preferred provider is strict -- `cpu` below is the
+    // deliberate fallback for operators the preferred one cannot take.
+    Ok(vec![preferred.error_on_failure(), cpu])
 }
 
 /// Rejects a provider the loaded runtime does not actually contain.
