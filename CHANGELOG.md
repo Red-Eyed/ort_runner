@@ -32,6 +32,11 @@ All notable changes to this project are documented here. The format is based on
   conditions reports its own reason when it fails, because only one of them is fixable and they
   are fixed in different ways.
 
+- **`--qnn-libs <dir>`** on `run_android.py`, defaulting to `$QNN_SDK_ROOT`. Given a QAIRT SDK, the
+  runner pushes the CPU-side libraries and every Hexagon skel it finds, and sets
+  `ADSP_LIBRARY_PATH` so the DSP can load its half. Only for a run that asks for QNN — the skels
+  are tens of megabytes and no other provider needs them.
+
 ### Changed
 
 - **android-arm64 now bundles the `onnxruntime-android-qnn` AAR** instead of the stock one. It is

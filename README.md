@@ -179,6 +179,15 @@ A provider that *is* available but fails to register aborts the run rather than 
 CPU. ONNX Runtime's default is to log and fall back, which for a benchmark is the worst case: a
 latency number for a provider that never ran, looking entirely ordinary.
 
+**Using QNN** needs Qualcomm's QAIRT SDK, whose libraries cannot be redistributed and so are not
+bundled. Point the runner at an install and it pushes what the device needs — the CPU-side
+libraries, every Hexagon skel it finds, and `ADSP_LIBRARY_PATH` so the DSP can load its half:
+
+```bash
+export QNN_SDK_ROOT=/opt/qairt/2.31.0        # or: just run-android-arm64 … --qnn-libs <dir>
+just run-android-arm64 model.onnx --provider qnn
+```
+
 **Tune threading.** Unset means ONNX Runtime's own default, which is not the same as any specific
 number:
 
