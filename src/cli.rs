@@ -41,6 +41,21 @@ pub enum OutputFormat {
     Json,
 }
 
+/// How the live progress display is drawn.
+///
+/// Not `Serialize`, unlike every other flag enum here: progress is a view of a run in flight, not
+/// a property of the measurement, so it has no place in the report a run is reproduced from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum ProgressMode {
+    /// A bar when stderr is a terminal, milestone lines when it is not.
+    Auto,
+    /// One line redrawn in place.
+    Bar,
+    /// A new line at each milestone; readable in a captured log, where a redrawn bar is not.
+    Lines,
+    Off,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ExecutionMode {
@@ -202,6 +217,14 @@ pub struct Cli {
     /// Human-readable text, or a single merged JSON document.
     #[arg(long, value_enum, default_value_t = OutputFormat::Human)]
     pub output_format: OutputFormat,
+
+    /// Live progress display, on stderr so it never mixes into the report.
+    //
+    // `auto` resolves to lines on a device: `adb shell <command>` allocates no pty, so the runner
+    // sees a pipe whether or not a person is watching. Only the host can tell, which is why
+    // scripts/run_android.py forwards `--progress bar` when its own stderr is a terminal.
+    #[arg(long, value_enum, default_value_t = ProgressMode::Auto)]
+    pub progress: ProgressMode,
 
     /// Enable ONNX Runtime's built-in per-op profiler. Writes a Chrome-trace-format JSON file into
     /// `ort_profiler/` beside this executable -- alongside `reports/`, so both come off a device

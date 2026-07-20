@@ -1,3 +1,4 @@
+use std::io::IsTerminal;
 use std::time::Instant;
 
 use anyhow::{Context, Result};
@@ -5,7 +6,8 @@ use clap::Parser;
 
 use ort_runner::cli::Cli;
 use ort_runner::{
-    bench, config, dylib, host, info, model, profile, report, session, shutdown, stats, tensors,
+    bench, config, dylib, host, info, model, profile, progress, report, session, shutdown, stats,
+    tensors,
 };
 
 fn main() {
@@ -89,7 +91,11 @@ fn run() -> Result<()> {
     )?;
 
     let bench_config = config::BenchConfig::from(&cli);
-    let timings = bench::run(&mut session, &prepared.inputs, bench_config)?;
+
+    // The terminal test happens here, at the edge, so `Progress` stays a pure resolution of the
+    // flag and needs no opinion about where it is drawing.
+    let progress = progress::Progress::new(cli.progress, std::io::stderr().is_terminal());
+    let timings = bench::run(&mut session, &prepared.inputs, bench_config, &progress)?;
     let complete_memory = host::snapshot();
 
     // After the snapshot: flushing the trace allocates, and that cost belongs to the profiler

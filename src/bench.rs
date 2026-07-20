@@ -19,6 +19,7 @@ use ort::session::{RunOptions, Session, SessionInputValue};
 use serde::Serialize;
 
 use crate::config::BenchConfig;
+use crate::progress::Progress;
 use crate::tensors::PreparedInput;
 use crate::watchdog::Watchdog;
 
@@ -43,6 +44,7 @@ pub fn run(
     session: &mut Session,
     inputs: &[PreparedInput],
     config: BenchConfig,
+    progress: &Progress,
 ) -> Result<Timings> {
     let run_options = Arc::new(RunOptions::new().context("creating run options")?);
     let watchdog = arm_watchdog(&run_options, config);
@@ -54,6 +56,7 @@ pub fn run(
         "warmup",
         &run_options,
         &watchdog,
+        progress,
     )?;
     let measured_ms = iterate(
         session,
@@ -62,6 +65,7 @@ pub fn run(
         "measured",
         &run_options,
         &watchdog,
+        progress,
     )?;
 
     Ok(Timings {
@@ -90,11 +94,13 @@ fn iterate(
     session: &mut Session,
     inputs: &[PreparedInput],
     count: u64,
-    phase: &str,
+    phase: &'static str,
     run_options: &RunOptions,
     watchdog: &Watchdog,
+    progress: &Progress,
 ) -> Result<Vec<f64>> {
     let mut samples = Vec::with_capacity(usize::try_from(count).unwrap_or(0));
+    let mut drawn = progress.phase(phase, count);
 
     for index in 0..count {
         // Built outside the timed region: `run` consumes its inputs, so the borrowed views have
@@ -122,7 +128,11 @@ fn iterate(
         // mutable borrow.
         drop(outputs);
 
-        samples.push(elapsed.as_secs_f64() * 1000.0);
+        let elapsed_ms = elapsed.as_secs_f64() * 1000.0;
+        samples.push(elapsed_ms);
+
+        // After the sample is taken, never between the clock readings: drawing is harness cost.
+        drawn.advance(elapsed_ms);
     }
 
     Ok(samples)

@@ -26,6 +26,7 @@ pub mod info;
 pub mod model;
 pub mod paths;
 pub mod profile;
+pub mod progress;
 pub mod report;
 pub mod session;
 pub mod shutdown;

@@ -201,6 +201,12 @@ adb devices
 just run-android-arm64 model.onnx --dim batch=1 --provider nnapi
 ```
 
+A run reports its progress on stderr as it goes, so a slow model is distinguishable from a hang.
+On a terminal that is a bar; everywhere else — including a device, since `adb shell` presents no
+terminal — it is one line per 10% of iterations, which stays readable in a captured log. Control
+it with `--progress <auto|bar|lines|off>`. Either way it never touches stdout, so the report
+stays pipeable with the display on.
+
 `--help` lists the rest: graph optimization level, memory-pattern control, fill strategy and seed
 for generated inputs, log severity, and dumping the post-optimization graph.
 

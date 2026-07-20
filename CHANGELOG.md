@@ -4,6 +4,27 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`--progress <auto|bar|lines|off>`** (default `auto`), a live display of a run in flight on
+  stderr. A benchmark is the one kind of command where silence is indistinguishable from a hang:
+  a slow model on a phone previously printed nothing for minutes, and the only signal that
+  anything was wrong was `--iteration-timeout`, which says nothing about the remaining iterations.
+
+  Two renderings, because the destination decides which is readable. A terminal gets a bar
+  redrawn in place; anything else gets one line per 10% of iterations, since a redrawn bar in a
+  captured log is a single unreadable line thousands of columns wide.
+
+  `auto` resolves to lines on a device. `adb shell <command>` allocates no pty, so the runner
+  always sees a pipe there regardless of who is watching — which makes the line rendering the
+  Android default rather than a fallback.
+
+  Everything goes to stderr, never stdout, so the report stays pipeable into a file or a JSON
+  parser with the display on. The setting is not recorded in the report: it is a view of a run,
+  not a property of the measurement.
+
 ## [0.5.0] - 2026-07-20
 
 ### Added
