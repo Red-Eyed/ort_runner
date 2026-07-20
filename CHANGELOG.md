@@ -17,9 +17,9 @@ All notable changes to this project are documented here. The format is based on
   once the report is written, so that phase is never entered. Only bionic checks for this, which is
   why Linux never showed it.
 
-  This diagnosis is drawn from the ONNX Runtime and `ort` sources rather than from a device
-  backtrace, and the fix is a mitigation in this tool rather than a cure in `ort`. The symptom it
-  addresses is well established; the mechanism behind it is the best available explanation.
+  Confirmed fixed on a device. The diagnosis behind it is drawn from the ONNX Runtime and `ort`
+  sources rather than from a backtrace, so it remains the best available explanation of *why* the
+  fix works; and the fix is a mitigation in this tool rather than a cure in `ort`.
 
 ## [0.4.0] - 2026-07-20
 

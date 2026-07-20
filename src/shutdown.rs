@@ -24,15 +24,14 @@
 //! normally on the way out of `run`, and everything else is memory the kernel reclaims. What is
 //! skipped is only the teardown whose ordering cannot be guaranteed.
 //!
-//! The causal chain above is inferred by reading the `ort` and ONNX Runtime sources, not observed
-//! in a debugger: the abort reproduces only on a physical device, and this crate is developed
-//! without one. What is directly established is narrower -- the process aborts during exit, after
-//! the report has been printed, on Android and never on glibc. Two other explanations were
-//! examined against the sources and ruled out: ending the profiler twice (`Profiler::EndProfiling`
-//! checks `enabled_` before taking its mutex) and link-time removal of the crate's exit handler
-//! (the binary's `.fini_array` relocation does resolve into `.text`). Treat this as the best
-//! available account rather than a proven one, and check it against a real backtrace before
-//! building on it.
+//! Exiting this way is confirmed on a device to stop the abort. The causal chain above is not
+//! confirmed to the same degree: it was inferred by reading the `ort` and ONNX Runtime sources
+//! rather than read off a backtrace, and leaving before the exit phase would equally hide any
+//! other fault living in it. So the remedy is established; the explanation is the best available
+//! account of why it works. Two competing explanations were examined against those sources and
+//! ruled out -- ending the profiler twice (`Profiler::EndProfiling` checks `enabled_` before
+//! taking its mutex) and link-time removal of the crate's exit handler (the binary's
+//! `.fini_array` relocation does resolve into `.text`).
 //!
 //! This is also a workaround at the wrong layer -- the real fix belongs in `ort`, whose
 //! `.fini_array` approach is documented as validated on Linux and Windows -- so it should be
