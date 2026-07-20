@@ -184,11 +184,13 @@ strategy as much as the model's real demand. When memory is what you're measurin
 ort_runner --model model.onnx --disable-cpu-arena --disable-mem-pattern
 ```
 
-**Find the slow op** with ONNX Runtime's own per-op profiler. The output is Chrome-trace JSON —
-open it at `chrome://tracing` or [ui.perfetto.dev](https://ui.perfetto.dev):
+**Find the slow op** with ONNX Runtime's own per-op profiler. The trace lands in `ort_profiler/`
+beside the binary — alongside `reports/`, so both come off a device in one `adb pull` — and its
+path is printed after the run and recorded in the report as `profile_path`. The output is
+Chrome-trace JSON: open it at `chrome://tracing` or [ui.perfetto.dev](https://ui.perfetto.dev):
 
 ```bash
-ort_runner --model model.onnx --profile --profile-prefix myrun
+ort_runner --model model.onnx --profile
 ```
 
 **Run on a device.** This downloads the release if needed, pushes the binary and

@@ -139,6 +139,11 @@ pub struct BenchReport {
     pub warmup: Option<Summary>,
     pub timings: Timings,
     pub memory: MemoryReport,
+    /// The per-op profiler trace this run wrote, or `None` if `--profile` was not passed.
+    ///
+    /// An artifact rather than a setting, which is why it sits here and not in `config`: the name
+    /// carries a timestamp ONNX Runtime chose, so it is only knowable after the run.
+    pub profile_path: Option<String>,
 }
 
 /// Binary-prefix size, scaled to the unit that keeps the number readable.
@@ -329,8 +334,7 @@ mod tests {
                 disable_cpu_arena: false,
                 disable_mem_pattern: false,
                 optimized_model_path: None,
-                profile: false,
-                profile_prefix: "ort".into(),
+                profile: None,
             },
             bench_config: BenchConfig {
                 warmup: 3,
@@ -385,6 +389,7 @@ mod tests {
                 snapshot(3, 3),
                 Fact::Known(1),
             ),
+            profile_path: None,
         }
     }
 }

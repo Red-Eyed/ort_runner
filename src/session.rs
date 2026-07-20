@@ -68,10 +68,8 @@ pub fn build(model: &Path, config: &RunConfig) -> Result<Session> {
     if let Some(path) = &config.optimized_model_path {
         builder = builder.with_optimized_model_path(path).map_err(plain)?;
     }
-    if config.profile {
-        builder = builder
-            .with_profiling(&config.profile_prefix)
-            .map_err(plain)?;
+    if let Some(destination) = &config.profile {
+        builder = builder.with_profiling(destination).map_err(plain)?;
     }
 
     builder

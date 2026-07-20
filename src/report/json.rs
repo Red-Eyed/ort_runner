@@ -10,8 +10,12 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use serde::Serialize;
 
+use crate::paths;
 use crate::report::schema::{documentation, Documentation};
 use crate::report::{BenchReport, Reporter};
+
+/// Sibling of `ort_profiler/`, holding one report per run.
+const DIRECTORY: &str = "reports";
 
 /// Bumped whenever the report's shape changes in a way a consumer would notice.
 ///
@@ -35,21 +39,14 @@ struct Document<'a> {
 }
 
 impl JsonReporter {
-    /// Writes into `reports/` beside the executable.
-    ///
-    /// Beside the executable rather than the working directory because on a device the binary is
-    /// pushed to a known location and run from wherever the shell happens to be; anchoring to the
-    /// binary means `adb pull <dir>/reports` always finds them.
+    /// Writes into `reports/` beside the executable. See `crate::paths` for why that anchor.
     ///
     /// # Errors
     /// If the executable's own path cannot be determined.
     pub fn beside_executable() -> Result<Self> {
-        let exe = std::env::current_exe().context("locating this executable")?;
-        let directory = exe
-            .parent()
-            .context("this executable has no parent directory")?
-            .join("reports");
-        Ok(Self { directory })
+        Ok(Self {
+            directory: paths::beside_executable(DIRECTORY)?,
+        })
     }
 
     #[must_use]
@@ -87,11 +84,7 @@ impl Reporter for JsonReporter {
 /// characters are dropped from the timestamp so the name is safe on any filesystem -- a colon is
 /// legal on Linux but not everywhere these files get copied.
 fn file_name(model_path: &str, created_at: &str) -> String {
-    let model = Path::new(model_path)
-        .file_stem()
-        .and_then(|stem| stem.to_str())
-        .filter(|stem| !stem.is_empty())
-        .unwrap_or("model");
+    let model = paths::model_stem(Path::new(model_path));
 
     let stamp: String = created_at
         .chars()

@@ -219,6 +219,15 @@ const FIELDS: &[(&str, &str)] = &[
          two models -- use the deltas instead.",
     ),
     (
+        "profile_path",
+        "Path to ONNX Runtime's per-op profiler trace for this run, or null if --profile was not \
+         passed. Chrome-trace JSON holding one entry per operator execution: this is what answers \
+         WHICH op is slow, where the statistics above answer how slow the model is overall. The \
+         trace itself is not included here -- it is orders of magnitude larger than this report. \
+         It sits in ort_profiler/ beside the executable, next to the reports/ directory this file \
+         came from, so both travel off a device together.",
+    ),
+    (
         "memory.peak_rss_bytes",
         "Peak resident set size for the whole process since start (getrusage ru_maxrss), \
          including shared pages. Answers 'did this ever spike'. Overstates what the process costs \

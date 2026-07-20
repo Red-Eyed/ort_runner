@@ -4,7 +4,9 @@ use anyhow::{Context, Result};
 use clap::Parser;
 
 use ort_runner::cli::Cli;
-use ort_runner::{bench, config, dylib, host, info, model, report, session, stats, tensors};
+use ort_runner::{
+    bench, config, dylib, host, info, model, profile, report, session, stats, tensors,
+};
 
 fn main() {
     if let Err(err) = run() {
@@ -34,8 +36,16 @@ fn run() -> Result<()> {
         return Ok(());
     }
 
-    let run_config = config::RunConfig::from(&cli);
     let model_path = cli.model_path()?;
+
+    // Resolved before the session exists because ONNX Runtime takes the destination at build time
+    // and creates no directory of its own. Absent unless asked for: no --profile, no directory.
+    let profile_destination = if cli.profile {
+        Some(profile::destination(model_path)?)
+    } else {
+        None
+    };
+    let run_config = config::RunConfig::new(&cli, profile_destination);
 
     // Taken before the session exists, so the difference from the next reading isolates what the
     // model costs from the constant the runtime and libc already occupy.
@@ -75,6 +85,13 @@ fn run() -> Result<()> {
     let timings = bench::run(&mut session, &prepared.inputs, bench_config)?;
     let complete_memory = host::snapshot();
 
+    // After the snapshot: flushing the trace allocates, and that cost belongs to the profiler
+    // rather than to the model the report is about.
+    let profile_path = match &run_config.profile {
+        Some(_) => Some(profile::finish(&mut session)?),
+        None => None,
+    };
+
     // Non-empty by construction: --iterations is rejected at zero by the parser, so this is the
     // "cannot happen" branch rather than a case the CLI can reach.
     let measured = stats::summarize(&timings.measured_ms)
@@ -103,6 +120,7 @@ fn run() -> Result<()> {
             complete_memory,
             host::peak_rss_bytes(),
         ),
+        profile_path: profile_path.map(|path| path.display().to_string()),
     };
 
     // Both destinations always run: stdout for the person watching, JSON for everything else.

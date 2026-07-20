@@ -4,6 +4,23 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- **`--profile` writes to `ort_profiler/` beside the executable**, a sibling of `reports/`, so a
+  profiled run's two artifacts come off a device together. The path is now printed after the run
+  and recorded in the JSON report as `profile_path`. Previously the trace was written relative to
+  the process working directory, which under `adb shell` is `/` and not writable — so on a device,
+  the case this tool exists for, the trace was lost.
+- **`--profile-prefix` removed.** The trace is named after the model, matching how `reports/`
+  names its files.
+
+### Fixed
+
+- **`--profile` produced an empty trace.** ONNX Runtime only flushes the profile when profiling is
+  explicitly ended, which never happened.
+
 ## [0.3.0] - 2026-07-19
 
 Rewritten from C++/CMake to Rust/Cargo. Everything 0.2.0 benchmarked, this benchmarks — what

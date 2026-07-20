@@ -30,7 +30,18 @@ impl Reporter for HumanReporter {
         print_context(report);
         print_latency(report);
         print_memory(report);
+        print_profile(report);
         Ok(())
+    }
+}
+
+/// The profiler trace, when one was written.
+///
+/// Printed because ONNX Runtime appends a timestamp of its own choosing to the file name, so
+/// someone who passed --profile cannot predict what to go and open.
+fn print_profile(report: &BenchReport) {
+    if let Some(path) = &report.profile_path {
+        anstream::println!("\nprofile: {path}");
     }
 }
 

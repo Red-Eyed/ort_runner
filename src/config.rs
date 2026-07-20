@@ -34,8 +34,17 @@ pub struct RunConfig {
     pub disable_cpu_arena: bool,
     pub disable_mem_pattern: bool,
     pub optimized_model_path: Option<PathBuf>,
-    pub profile: bool,
-    pub profile_prefix: String,
+    /// Where ONNX Runtime's per-op profiler writes, or `None` to leave it off.
+    ///
+    /// Resolved by the caller rather than derived from the `Cli` here, because naming the
+    /// destination needs the executable's own location -- an IO question that belongs at the edge,
+    /// not in a value a sweep generates.
+    ///
+    /// Not serialised: the report records `profile_path`, the file the profiler actually wrote,
+    /// which carries the timestamp ONNX Runtime appended to this prefix. Recording both would put
+    /// two near-identical paths in the report for a reader to choose between.
+    #[serde(skip)]
+    pub profile: Option<PathBuf>,
 }
 
 /// How the measurement itself is taken.
@@ -51,8 +60,15 @@ pub struct BenchConfig {
     pub iterations: u64,
 }
 
-impl From<&Cli> for RunConfig {
-    fn from(cli: &Cli) -> Self {
+impl RunConfig {
+    /// Resolves the settings for one run.
+    ///
+    /// `profile` is injected rather than read from `cli.profile`, because turning that flag into a
+    /// destination requires locating the executable and creating a directory. Taking the result as
+    /// an argument keeps this constructor pure, and keeps the side effect at the one call site that
+    /// is already doing IO.
+    #[must_use]
+    pub fn new(cli: &Cli, profile: Option<PathBuf>) -> Self {
         Self {
             provider: cli.provider,
             execution_mode: cli.execution_mode,
@@ -65,8 +81,7 @@ impl From<&Cli> for RunConfig {
             disable_cpu_arena: cli.disable_cpu_arena,
             disable_mem_pattern: cli.disable_mem_pattern,
             optimized_model_path: cli.optimized_model_path.clone(),
-            profile: cli.profile,
-            profile_prefix: cli.profile_prefix.clone(),
+            profile,
         }
     }
 }
@@ -102,7 +117,7 @@ mod tests {
             "--threads",
             "2",
         ]);
-        let config = RunConfig::from(&cli);
+        let config = RunConfig::new(&cli, None);
 
         assert_eq!(config.provider, Provider::Cpu);
         assert_eq!(config.inter_op_threads, 4);
@@ -113,11 +128,25 @@ mod tests {
     /// builder would override ONNX Runtime's own default with a value nobody chose.
     #[test]
     fn an_unset_thread_count_stays_absent() {
-        let config = RunConfig::from(&parse(&["ort_runner", "--model", "m.onnx"]));
+        let config = RunConfig::new(&parse(&["ort_runner", "--model", "m.onnx"]), None);
 
         assert_eq!(config.intra_op_threads, None);
         assert_eq!(config.intra_op_spinning, None);
         assert_eq!(config.inter_op_spinning, None);
+    }
+
+    /// The profiler destination is the caller's to resolve, so an unprofiled run must carry no
+    /// path -- and `--profile` alone must not conjure one, or the session would enable profiling
+    /// against a directory nobody created.
+    #[test]
+    fn the_profile_destination_is_whatever_the_caller_injected() {
+        let cli = parse(&["ort_runner", "--model", "m.onnx", "--profile"]);
+
+        assert_eq!(RunConfig::new(&cli, None).profile, None);
+        assert_eq!(
+            RunConfig::new(&cli, Some(PathBuf::from("/tmp/ort_profiler/m"))).profile,
+            Some(PathBuf::from("/tmp/ort_profiler/m"))
+        );
     }
 
     #[test]

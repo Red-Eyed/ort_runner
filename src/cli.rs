@@ -196,14 +196,11 @@ pub struct Cli {
     #[arg(long, value_enum, default_value_t = OutputFormat::Human)]
     pub output_format: OutputFormat,
 
-    /// Enable ONNX Runtime's built-in per-op profiler (writes a Chrome-trace-format JSON file;
-    /// the path is printed after the run).
+    /// Enable ONNX Runtime's built-in per-op profiler. Writes a Chrome-trace-format JSON file into
+    /// `ort_profiler/` beside this executable -- alongside `reports/`, so both come off a device
+    /// together. The path is printed after the run and recorded in the report.
     #[arg(long)]
     pub profile: bool,
-
-    /// File prefix passed to the profiler when --profile is set.
-    #[arg(long, default_value = "ort_runner_profile")]
-    pub profile_prefix: String,
 
     /// ONNX Runtime graph optimization level.
     #[arg(long, value_enum, default_value_t = GraphOptLevel::All)]
