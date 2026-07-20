@@ -36,6 +36,17 @@ _MAVEN_AAR = (
 )
 
 
+# Written into each unpacked dist, recording the URL it came from.
+#
+# Presence of the headers alone cannot answer "is this the distribution we now want?", only "is
+# something here". Those differ the moment a dist's URL changes, and the stale answer is the
+# dangerous one: a warm sdk/ would keep serving the previous runtime, and a build would bundle a
+# .so that no longer matches what this script says it fetches. Stamping the source makes the check
+# compare what is on disk against what is wanted, so a changed URL re-fetches by itself instead of
+# needing anyone to know to delete a directory.
+_SOURCE_STAMP = ".ort_runner_source"
+
+
 @dataclass(frozen=True)
 class TarballDist:
     """An onnxruntime-linux-<arch> release tarball: flat include/ + lib/libonnxruntime.so*."""
@@ -44,7 +55,7 @@ class TarballDist:
     dest: Path
 
     def already_present(self) -> bool:
-        return (self.dest / "include" / "onnxruntime_cxx_api.h").is_file()
+        return (self.dest / "include" / "onnxruntime_cxx_api.h").is_file() and _stamp_matches(self)
 
 
 @dataclass(frozen=True)
@@ -56,7 +67,15 @@ class AarDist:
     abi: str
 
     def already_present(self) -> bool:
-        return (self.dest / "headers" / "onnxruntime_cxx_api.h").is_file()
+        return (self.dest / "headers" / "onnxruntime_cxx_api.h").is_file() and _stamp_matches(self)
+
+
+def _stamp_matches(dist: TarballDist | AarDist) -> bool:
+    stamp = dist.dest / _SOURCE_STAMP
+    if not stamp.is_file():
+        # Unpacked before stamping existed, so its source is unknown and cannot be vouched for.
+        return False
+    return stamp.read_text().strip() == dist.url
 
 
 _DISTS: dict[Target, TarballDist | AarDist] = {
@@ -152,6 +171,11 @@ def fetch(target: Target) -> Path:
         return dist.dest
 
     SDK_ROOT.mkdir(parents=True, exist_ok=True)
+    # Clear any earlier unpack rather than extracting over it. Two distributions do not
+    # necessarily carry the same file set, so overlaying would leave headers behind from a
+    # runtime that is no longer here.
+    shutil.rmtree(dist.dest, ignore_errors=True)
+
     archive = SDK_ROOT / Path(dist.url).name
     _download(dist.url, archive)
     if isinstance(dist, TarballDist):
@@ -159,6 +183,8 @@ def fetch(target: Target) -> Path:
     else:
         _extract_aar_abi(archive, dist.dest, dist.abi)
     archive.unlink()
+
+    (dist.dest / _SOURCE_STAMP).write_text(f"{dist.url}\n")
     return dist.dest
 
 
