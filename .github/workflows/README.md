@@ -65,6 +65,8 @@ jobs:
 The check job is intentionally small and runs before any container images are built.
 
 ```yaml
+- uses: actions/checkout@v6
+- uses: astral-sh/setup-uv@v8
 - id: check
   env:
     GITHUB_TOKEN: ${{ github.token }}
@@ -118,15 +120,15 @@ below.
 ### Docker And Build Cache Setup
 
 ```yaml
-- uses: docker/setup-qemu-action@v3
-- uses: docker/setup-buildx-action@v3
+- uses: docker/setup-qemu-action@v4
+- uses: docker/setup-buildx-action@v4
 ```
 
 The toolchain images are built as `linux/arm64`. QEMU makes that possible on GitHub's x64 hosted
 runners. Buildx is used so Docker can restore and save image layers with GitHub's cache service.
 
 ```yaml
-- uses: actions/cache@v4
+- uses: actions/cache@v5
   with:
     path: |
       .cargo
@@ -157,7 +159,7 @@ Container builds deliberately run Cargo with `--offline`. This step populates th
 ```yaml
 - name: Build Linux Toolchain Image
   if: contains(needs.check.outputs.targets, 'linux-')
-  uses: docker/build-push-action@v6
+  uses: docker/build-push-action@v7
 ```
 
 The Linux image is built only when at least one Linux target is selected by the check job.
@@ -165,7 +167,7 @@ The Linux image is built only when at least one Linux target is selected by the 
 ```yaml
 - name: Build Android Toolchain Image
   if: contains(needs.check.outputs.targets, 'android-')
-  uses: docker/build-push-action@v6
+  uses: docker/build-push-action@v7
 ```
 
 The Android image is built only when Android targets are selected. In normal refresh releases this
@@ -181,6 +183,9 @@ load: true
 
 The `gha` cache stores expensive image layers, including Rust, system linkers and the Android NDK.
 `load: true` makes the built image available to the later `docker run` calls in the same job.
+
+These action major versions use the Node.js 24 action runtime. GitHub-hosted runners satisfy the
+required runner version; self-hosted runners would need Actions Runner `v2.327.1` or newer.
 
 ### Target Build Loop
 

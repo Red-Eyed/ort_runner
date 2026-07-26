@@ -27,8 +27,8 @@ jobs:
       targets: ${{ steps.check.outputs.targets }}
       reason: ${{ steps.check.outputs.reason }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v8
       - id: check
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -49,17 +49,17 @@ jobs:
       # well-supported Docker stack, and Docker is what the BuildKit cache action integrates with.
       ORT_RUNNER_CONTAINER_ENGINE: docker
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v8
       # The repo's toolchain images are built for linux/arm64 even on x64 runners. QEMU is only
       # for image execution/build plumbing; the target binaries themselves are still cross-built
       # by Rust inside the image.
-      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-qemu-action@v4
       # build-push-action stores the expensive toolchain-image layers in GitHub's cache service.
       # That is the part worth caching: the images install Rust, system linkers and the Android
       # NDK, while the daily release check itself stays cheap and runs in the separate check job.
-      - uses: docker/setup-buildx-action@v3
-      - uses: actions/cache@v4
+      - uses: docker/setup-buildx-action@v4
+      - uses: actions/cache@v5
         with:
           # .cargo holds downloaded crate sources used by cargo --offline inside the containers.
           # sdk is keyed by ORT version so a daily refresh does not re-download the same runtime.
@@ -81,7 +81,7 @@ jobs:
           CARGO_HOME="${GITHUB_WORKSPACE}/.cargo" cargo +1.97.0 fetch --locked
       - name: Build Linux Toolchain Image
         if: contains(needs.check.outputs.targets, 'linux-')
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: podman
           file: podman/Containerfile.linux
@@ -92,7 +92,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=ort-runner-builder-linux
       - name: Build Android Toolchain Image
         if: contains(needs.check.outputs.targets, 'android-')
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: podman
           file: podman/Containerfile.android
