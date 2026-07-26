@@ -40,6 +40,15 @@ def bundle_runtime(target: Target) -> None:
     print(f"bundled {destination}")
 
 
+def bundle_qnn_runtime(target: Target) -> None:
+    """Copy QNN's runtime libraries beside Android arm64 builds."""
+    fetch_onnxruntime.fetch_qnn_runtime(target)
+    for library in fetch_onnxruntime.qnn_runtime_libraries(target):
+        destination = resolve(target).build_dir / library.name
+        shutil.copyfile(library, destination)
+        print(f"bundled {destination}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("target", type=Target, choices=list(Target))
@@ -51,6 +60,7 @@ def main() -> None:
 
     podman_exec(args.target, ["bash", "-c", cargo_build_command(args.target)])
     bundle_runtime(args.target)
+    bundle_qnn_runtime(args.target)
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@
 ort_runner never builds ONNX Runtime -- it always links the official prebuilt binaries:
   * Linux (x86_64 / aarch64): the onnxruntime-linux-<arch> release tarball (a glibc .so).
   * Android (arm64-v8a / armeabi-v7a): the shared lib from inside the onnxruntime-android AAR.
+  * Android arm64 QNN: the matching Qualcomm qnn-runtime AAR declared by onnxruntime-android-qnn.
 
 Each target unpacks into its own arch-specific sdk/ subdirectory (so the two Linux arches, or the
 two Android ABIs, never clobber one another), matching the ORT_RUNNER_SDK_DIR each CMakePresets.json
@@ -21,13 +22,14 @@ import shutil
 import sys
 import tarfile
 import urllib.request
+import xml.etree.ElementTree as ET
 import zipfile
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from targets import REPO_ROOT, Target
 
-DEFAULT_ORT_VERSION = "1.28.0"
+DEFAULT_ORT_VERSION = "1.27.0"
 ORT_VERSION = os.environ.get("ORT_RUNNER_ORT_VERSION", DEFAULT_ORT_VERSION)
 SDK_ROOT = REPO_ROOT / "sdk"
 
@@ -41,6 +43,13 @@ def _maven_aar(artifact: str) -> str:
     )
 
 
+def _maven_pom(artifact: str) -> str:
+    return (
+        f"https://repo1.maven.org/maven2/com/microsoft/onnxruntime/{artifact}/"
+        f"{ORT_VERSION}/{artifact}-{ORT_VERSION}.pom"
+    )
+
+
 # The stock AAR, built without QNN. Ships every ABI.
 _MAVEN_AAR = _maven_aar("onnxruntime-android")
 
@@ -49,10 +58,20 @@ _MAVEN_AAR = _maven_aar("onnxruntime-android")
 # stock build's providers (CPU, NNAPI, XNNPACK and WebGPU are all still there), so arm64 loses
 # nothing by taking it; the other two ABIs stay on the stock AAR because no QNN build exists for
 # them.
-#
-# It bundles no Qualcomm libraries: QNN reaches the NPU through libQnnHtp.so from the QAIRT SDK,
-# which cannot be redistributed.
 _MAVEN_AAR_QNN = _maven_aar("onnxruntime-android-qnn")
+_MAVEN_POM_QNN = _maven_pom("onnxruntime-android-qnn")
+
+_QNN_RUNTIME_GROUP = "com.qualcomm.qti"
+_QNN_RUNTIME_ARTIFACT = "qnn-runtime"
+_QNN_RUNTIME_DEST = SDK_ROOT / "qnn-runtime-android-arm64"
+
+
+def _qnn_runtime_aar(version: str) -> str:
+    group_path = _QNN_RUNTIME_GROUP.replace(".", "/")
+    return (
+        f"https://repo1.maven.org/maven2/{group_path}/{_QNN_RUNTIME_ARTIFACT}/"
+        f"{version}/{_QNN_RUNTIME_ARTIFACT}-{version}.aar"
+    )
 
 
 # Written into each unpacked dist, recording the URL it came from.
@@ -89,6 +108,23 @@ class AarDist:
         return (self.dest / "headers" / "onnxruntime_cxx_api.h").is_file() and _stamp_matches(self)
 
 
+@dataclass(frozen=True)
+class QnnRuntimeDist:
+    """The Qualcomm Android runtime AAR that provides QNN's backend and DSP libraries."""
+
+    ort_qnn_pom_url: str
+    dest: Path
+
+    def already_present(self) -> bool:
+        stamp = self.dest / _SOURCE_STAMP
+        lines = stamp.read_text().splitlines() if stamp.is_file() else []
+        return (
+            bool(lines)
+            and lines[0] == self.ort_qnn_pom_url
+            and bool(qnn_runtime_libraries(Target.ANDROID_ARM64))
+        )
+
+
 def _stamp_matches(dist: TarballDist | AarDist) -> bool:
     stamp = dist.dest / _SOURCE_STAMP
     if not stamp.is_file():
@@ -123,11 +159,38 @@ _DISTS: dict[Target, TarballDist | AarDist] = {
     ),
 }
 
+_QNN_RUNTIME = QnnRuntimeDist(ort_qnn_pom_url=_MAVEN_POM_QNN, dest=_QNN_RUNTIME_DEST)
+
 
 def _download(url: str, dest_file: Path) -> None:
     print(f"Downloading {url}", file=sys.stderr)
     with urllib.request.urlopen(url) as response, dest_file.open("wb") as out:
         shutil.copyfileobj(response, out)
+
+
+def _download_text(url: str) -> str:
+    print(f"Downloading {url}", file=sys.stderr)
+    with urllib.request.urlopen(url) as response:
+        return response.read().decode("utf-8")
+
+
+def _qnn_runtime_version(ort_qnn_pom: str) -> str:
+    """The qnn-runtime version declared by the matching onnxruntime-android-qnn POM."""
+    root = ET.fromstring(ort_qnn_pom)
+    namespace = {"m": "http://maven.apache.org/POM/4.0.0"}
+    for dependency in root.findall(".//m:dependency", namespace):
+        group_id = dependency.findtext("m:groupId", namespaces=namespace)
+        artifact_id = dependency.findtext("m:artifactId", namespaces=namespace)
+        version = dependency.findtext("m:version", namespaces=namespace)
+        if (
+            group_id == _QNN_RUNTIME_GROUP
+            and artifact_id == _QNN_RUNTIME_ARTIFACT
+            and version is not None
+        ):
+            return version
+    raise SystemExit(
+        f"error: {_MAVEN_POM_QNN} does not declare {_QNN_RUNTIME_GROUP}:{_QNN_RUNTIME_ARTIFACT}"
+    )
 
 
 def _extract_tarball_strip1(archive: Path, dest: Path) -> None:
@@ -163,6 +226,36 @@ def _extract_aar_abi(archive: Path, dest: Path, abi: str) -> None:
         aar.extractall(dest, members=wanted)
 
 
+def _is_qnn_runtime_library(member: str) -> bool:
+    path = PurePosixPath(member)
+    if path.suffix != ".so":
+        return False
+
+    parts = tuple(part.lower() for part in path.parts)
+    return (
+        any("arm64-v8a" in part for part in parts)
+        or any("aarch64-android" in part for part in parts)
+        or any(part.startswith("hexagon-") for part in parts)
+    )
+
+
+def _extract_qnn_runtime_aar(archive: Path, dest: Path) -> None:
+    """Flatten QNN's Android and Hexagon shared libraries into `dest`."""
+    dest.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(archive) as aar:
+        libraries = [name for name in aar.namelist() if _is_qnn_runtime_library(name)]
+        if not libraries:
+            raise SystemExit(f"error: no Android arm64 QNN libraries found in {archive.name}")
+
+        seen: set[str] = set()
+        for member in libraries:
+            name = PurePosixPath(member).name
+            if name in seen:
+                raise SystemExit(f"error: duplicate QNN runtime library in AAR: {name}")
+            seen.add(name)
+            (dest / name).write_bytes(aar.read(member))
+
+
 def library_path(target: Target) -> Path:
     """The one libonnxruntime shared object to ship beside `target`'s binary.
 
@@ -180,6 +273,37 @@ def library_path(target: Target) -> Path:
         found = ", ".join(sorted(str(path) for path in real))
         raise SystemExit(f"error: expected one libonnxruntime.so for {target}, found: {found}")
     return real.pop()
+
+
+def qnn_runtime_libraries(target: Target) -> list[Path]:
+    """QNN runtime libraries to bundle for `target`, already flattened by name."""
+    if target is not Target.ANDROID_ARM64:
+        return []
+    return sorted(_QNN_RUNTIME.dest.glob("*.so"))
+
+
+def fetch_qnn_runtime(target: Target) -> Path | None:
+    """Ensure QNN's Android runtime libraries are unpacked, when `target` uses QNN."""
+    if target is not Target.ANDROID_ARM64:
+        return None
+    if _QNN_RUNTIME.already_present():
+        print(f"Already present: {_QNN_RUNTIME.dest}", file=sys.stderr)
+        return _QNN_RUNTIME.dest
+
+    SDK_ROOT.mkdir(parents=True, exist_ok=True)
+    shutil.rmtree(_QNN_RUNTIME.dest, ignore_errors=True)
+
+    ort_qnn_pom = _download_text(_QNN_RUNTIME.ort_qnn_pom_url)
+    qnn_runtime_url = _qnn_runtime_aar(_qnn_runtime_version(ort_qnn_pom))
+    archive = SDK_ROOT / Path(qnn_runtime_url).name
+    _download(qnn_runtime_url, archive)
+    _extract_qnn_runtime_aar(archive, _QNN_RUNTIME.dest)
+    archive.unlink()
+
+    (_QNN_RUNTIME.dest / _SOURCE_STAMP).write_text(
+        f"{_QNN_RUNTIME.ort_qnn_pom_url}\n{qnn_runtime_url}\n"
+    )
+    return _QNN_RUNTIME.dest
 
 
 def fetch(target: Target) -> Path:

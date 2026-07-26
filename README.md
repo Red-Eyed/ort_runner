@@ -93,8 +93,8 @@ python3 scripts/run_android.py --source prebuilt android-arm64 model.onnx
 Or skip the repo entirely — unpack a release zip and run the binary directly:
 
 ```bash
-unzip ort_runner-v0.6.0-linux-aarch64-ort1.28.0.zip
-cd    ort_runner-v0.6.0-linux-aarch64-ort1.28.0
+unzip ort_runner-v0.7.0-linux-aarch64-ort1.27.0.zip
+cd    ort_runner-v0.7.0-linux-aarch64-ort1.27.0
 ./ort_runner --model model.onnx
 ```
 
@@ -179,14 +179,16 @@ A provider that *is* available but fails to register aborts the run rather than 
 CPU. ONNX Runtime's default is to log and fall back, which for a benchmark is the worst case: a
 latency number for a provider that never ran, looking entirely ordinary.
 
-**Using QNN** needs Qualcomm's QAIRT SDK, whose libraries cannot be redistributed and so are not
-bundled. Point the runner at an install and it pushes what the device needs — the CPU-side
-libraries, every Hexagon skel it finds, and `ADSP_LIBRARY_PATH` so the DSP can load its half:
+**Using QNN** is batteries-included in the android-arm64 release: the runner copies the bundled
+QNN runtime libraries to the device beside `ort_runner` and `libonnxruntime.so`, and sets
+`ADSP_LIBRARY_PATH` so the DSP can load its half:
 
 ```bash
-export QNN_SDK_ROOT=/opt/qairt/2.31.0        # or: just run-android-arm64 … --qnn-libs <dir>
 just run-android-arm64 model.onnx --provider qnn
 ```
+
+For a custom source build or a nonstandard QNN runtime, `QNN_SDK_ROOT` and `--qnn-libs <dir>` are
+still supported as overrides.
 
 **Tune threading.** Unset means ONNX Runtime's own default, which is not the same as any specific
 number:
@@ -272,13 +274,12 @@ own x86_64 toolchain, because `rustc` segfaults under QEMU.
 - **Memory figures cover this process only.** Under `--provider nnapi`, `webgpu` or `qnn`,
   allocations happen in a vendor HAL, a GPU driver or the Hexagon DSP where `/proc` cannot see
   them; the numbers are complete for `cpu` and `xnnpack`.
-- **QNN is android-arm64 only, and needs libraries this project cannot ship.** It exists only in
-  Microsoft's `onnxruntime-android-qnn` AAR, which is published for `arm64-v8a` alone — so that is
-  the build android-arm64 bundles (a strict superset of the stock one: CPU, NNAPI, XNNPACK and
-  WebGPU are all still there). The backend itself, `libQnnHtp.so`, comes from Qualcomm's QAIRT SDK
-  under a licence that forbids redistribution, so it must be supplied separately. And it runs on
-  Snapdragon only — Exynos, Dimensity and Tensor devices have no Hexagon DSP for it to target, and
-  should use `nnapi`.
+- **QNN is android-arm64 only.** It exists only in Microsoft's `onnxruntime-android-qnn` AAR,
+  which is published for `arm64-v8a` alone — so that is the build android-arm64 bundles (a strict
+  superset of the stock one: CPU, NNAPI, XNNPACK and WebGPU are all still there). Android arm64
+  releases also bundle Qualcomm's matching QNN runtime libraries when Maven publishes them. QNN
+  still runs on Snapdragon only — Exynos, Dimensity and Tensor devices have no Hexagon DSP for it
+  to target, and should use `nnapi`.
 - **Synthesized inputs are type- and shape-correct, not representative.** Random integer inputs
   are clamped to `[0, --int-fill-max]` (default 15) because index inputs blow up on out-of-range
   values — a mitigation, not a fix, since only you know the real vocabulary size. When it bites,

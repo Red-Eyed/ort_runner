@@ -96,10 +96,10 @@ def qnn_library_dirs(explicit: Path | None) -> list[Path]:
     sdk_root = os.environ.get(QNN_SDK_ENV)
     if sdk_root is None:
         raise SystemExit(
-            "error: --provider qnn needs Qualcomm's QNN backend libraries, which cannot be "
-            "redistributed and so are not bundled.\n"
-            f"       Set {QNN_SDK_ENV} to a QAIRT SDK install, or pass --qnn-libs <dir> holding "
-            "libQnnHtp.so, libQnnSystem.so and the matching libQnnHtpV*Stub/Skel libraries."
+            "error: --provider qnn needs Qualcomm's QNN backend libraries, but none were bundled "
+            "beside the selected android-arm64 binary.\n"
+            "       Download or rebuild the android-arm64 release so those libraries are included, "
+            f"or set {QNN_SDK_ENV} / pass --qnn-libs <dir> to use a custom QNN runtime."
         )
 
     lib_root = require_dir(Path(sdk_root) / "lib", f"{QNN_SDK_ENV}/lib")
@@ -110,14 +110,23 @@ def qnn_library_dirs(explicit: Path | None) -> list[Path]:
     return dirs
 
 
+def bundled_qnn_libraries(bin_dir: Path) -> list[Path]:
+    """QNN libraries already shipped beside the selected binary."""
+    return sorted(lib for lib in bin_dir.glob("*.so") if lib.name != "libonnxruntime.so")
+
+
+def push_libraries(libraries: list[Path]) -> None:
+    for lib in libraries:
+        push(lib, f"{DEVICE_DIR}/{lib.name}")
+
+
 def push_qnn_libraries(dirs: list[Path]) -> None:
     """Push every .so from `dirs` into DEVICE_DIR, where both linkers will look for them."""
     libraries = sorted({lib for directory in dirs for lib in directory.glob("*.so")})
     if not libraries:
         listed = ", ".join(str(d) for d in dirs)
         raise SystemExit(f"error: no .so files found in {listed}")
-    for lib in libraries:
-        push(lib, f"{DEVICE_DIR}/{lib.name}")
+    push_libraries(libraries)
 
 
 def require_dir(path: Path, what: str) -> Path:
@@ -145,8 +154,8 @@ def main() -> None:
         "--qnn-libs",
         type=Path,
         help=(
-            "directory holding Qualcomm's QNN backend libraries, pushed alongside the binary for "
-            f"a --provider qnn run (default: derived from ${QNN_SDK_ENV})"
+            "override directory holding Qualcomm's QNN backend libraries for a --provider qnn "
+            f"run (default: bundled libraries, then ${QNN_SDK_ENV})"
         ),
     )
     parser.add_argument("args", nargs=argparse.REMAINDER)
@@ -175,7 +184,14 @@ def main() -> None:
     # Resolved before anything else is pushed, so a run that cannot get its backend libraries
     # says so immediately rather than after copying a model to the device.
     if wants_qnn(args.args):
-        push_qnn_libraries(qnn_library_dirs(args.qnn_libs))
+        if args.qnn_libs is not None:
+            push_qnn_libraries(qnn_library_dirs(args.qnn_libs))
+        else:
+            qnn_libraries = bundled_qnn_libraries(bin_dir)
+            if qnn_libraries:
+                push_libraries(qnn_libraries)
+            else:
+                push_qnn_libraries(qnn_library_dirs(None))
 
     device_model = push_host_file(model)
     device_args = [to_device_arg(arg) for arg in args.args]

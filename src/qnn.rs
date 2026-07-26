@@ -4,18 +4,17 @@
 //! if `GetAvailableProviders` lists it, registering it works. QNN is the exception, because two
 //! further conditions sit outside the runtime:
 //!
-//! * **The backend library.** QNN reaches the NPU through `libQnnHtp.so`, which ships in
-//!   Qualcomm's QAIRT SDK under a licence that forbids redistribution. No ONNX Runtime artifact
-//!   bundles it, so it has to be put on the device separately from everything else this tool
-//!   ships.
+//! * **The backend library.** QNN reaches the NPU through `libQnnHtp.so`, from Qualcomm's
+//!   Android QNN runtime. Android arm64 releases are expected to ship it beside the runner, but
+//!   a source build or older release can still be missing it.
 //! * **The silicon.** That library drives a Hexagon DSP, which exists only on Snapdragon. On an
 //!   Exynos or Dimensity phone there is no such library to find and never will be.
 //!
 //! Collapsing those into one "not available" would be actively misleading: the backend case is
 //! fixed by copying two files, while the silicon case cannot be fixed at all, and a user told
-//! only "libQnnHtp.so not found" on an Exynos would go hunting for a file that would not help
-//! them if they found it. So each condition reports its own reason, and the reason travels to
-//! the error message and to `--info` rather than being flattened into a bool.
+//! only "libQnnHtp.so not found" on an Exynos would go hunting for a bundled file that would not
+//! help them if they found it. So each condition reports its own reason, and the reason travels
+//! to the error message and to `--info` rather than being flattened into a bool.
 //!
 //! [`verdict`] is a pure function of facts the shell below gathers, so every branch is testable
 //! on a host with no Android, no Qualcomm hardware and no ONNX Runtime present.
@@ -26,8 +25,8 @@ use anyhow::Result;
 use ort::ep::QNN;
 use ort::execution_providers::ExecutionProvider;
 
-use crate::info::platform::{DeviceProbe, Fact};
 use crate::info::Availability;
+use crate::info::platform::{DeviceProbe, Fact};
 
 /// The QNN backend this tool targets.
 ///
@@ -139,9 +138,9 @@ pub fn verdict(in_build: bool, soc: &Fact<String>, backend: &BackendSearch) -> R
     let Some(backend_path) = &backend.found else {
         return Readiness::not_ready(format!(
             "the QNN execution provider is present, but its backend library {BACKEND_LIB} is \
-             not. QNN cannot run without it. It ships in Qualcomm's QAIRT SDK, whose licence \
-             forbids redistribution, so no onnxruntime artifact bundles it and it has to be \
-             copied to the device separately. Searched: {}",
+             not. QNN cannot run without it. Android arm64 releases should bundle Qualcomm's \
+             QNN runtime libraries beside this executable; source builds can run the helper \
+             again to fetch them, or pass --qnn-libs to the Android runner. Searched: {}",
             backend.searched_display()
         ));
     };
@@ -163,7 +162,10 @@ fn foreign_vendor(soc: &Fact<String>) -> Option<&'static str> {
     };
     let soc = soc.to_ascii_lowercase();
 
-    if let Some((_, vendor)) = FOREIGN_SOC_NAMES.iter().find(|(name, _)| soc.contains(name)) {
+    if let Some((_, vendor)) = FOREIGN_SOC_NAMES
+        .iter()
+        .find(|(name, _)| soc.contains(name))
+    {
         return Some(vendor);
     }
     FOREIGN_BOARD_PREFIXES
@@ -217,7 +219,11 @@ pub fn readiness(probe: &dyn DeviceProbe) -> Result<Readiness> {
     if !in_build {
         // Reading system properties and walking LD_LIBRARY_PATH cannot change this answer, and
         // the first reason is the one the user needs, so the device is left unqueried.
-        return Ok(verdict(false, &Fact::not_applicable(), &BackendSearch::default()));
+        return Ok(verdict(
+            false,
+            &Fact::not_applicable(),
+            &BackendSearch::default(),
+        ));
     }
     Ok(verdict(true, &probe.identity().soc, &find_backend()))
 }
@@ -280,7 +286,10 @@ mod tests {
         ] {
             let readiness = verdict(true, &Fact::Known(soc.into()), &missing());
             let reason = reason(&readiness);
-            assert!(reason.contains(vendor), "{soc} should name {vendor}: {reason}");
+            assert!(
+                reason.contains(vendor),
+                "{soc} should name {vendor}: {reason}"
+            );
             assert!(
                 !reason.contains(BACKEND_LIB),
                 "{soc} must not be blamed on a missing library: {reason}"
@@ -292,7 +301,15 @@ mod tests {
     /// Snapdragon is unsupported is the one wrong answer with no recovery.
     #[test]
     fn qualcomm_socs_are_never_called_foreign() {
-        for soc in ["SM8550", "SM8650", "kalama", "taro", "lahaina", "sdm845", "pineapple"] {
+        for soc in [
+            "SM8550",
+            "SM8650",
+            "kalama",
+            "taro",
+            "lahaina",
+            "sdm845",
+            "pineapple",
+        ] {
             assert_eq!(foreign_vendor(&Fact::Known(soc.into())), None, "{soc}");
         }
     }
@@ -302,7 +319,10 @@ mod tests {
     fn an_unknown_soc_falls_through_to_the_backend_probe() {
         let unknown: Fact<String> = Fact::from_option(None, "property not set");
 
-        assert!(matches!(verdict(true, &unknown, &found()), Readiness::Ready { .. }));
+        assert!(matches!(
+            verdict(true, &unknown, &found()),
+            Readiness::Ready { .. }
+        ));
         assert!(reason(&verdict(true, &unknown, &missing())).contains(BACKEND_LIB));
     }
 
@@ -313,7 +333,10 @@ mod tests {
 
         assert!(reason.contains(BACKEND_LIB));
         assert!(reason.contains("/data/local/tmp"));
-        assert!(reason.contains("QAIRT"), "should say where the library comes from");
+        assert!(
+            reason.contains("bundle"),
+            "should say the library belongs in the release"
+        );
     }
 
     #[test]
@@ -331,6 +354,8 @@ mod tests {
     #[test]
     fn searching_nowhere_is_reported_rather_than_shown_as_an_empty_list() {
         let nowhere = BackendSearch::default();
-        assert!(reason(&verdict(true, &Fact::Known("SM8550".into()), &nowhere)).contains("nowhere"));
+        assert!(
+            reason(&verdict(true, &Fact::Known("SM8550".into()), &nowhere)).contains("nowhere")
+        );
     }
 }

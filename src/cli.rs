@@ -24,8 +24,8 @@ pub enum Provider {
     Xnnpack,
     /// Present in the Android AAR; absent from the Linux prebuilts.
     Webgpu,
-    /// Qualcomm Snapdragon only, and needs a backend library this tool cannot ship. Present in
-    /// the android-arm64 build alone. See `crate::qnn` for what has to be true for it to run.
+    /// Qualcomm Snapdragon only. Present in the android-arm64 build alone, whose releases bundle
+    /// the QNN runtime libraries. See `crate::qnn` for what has to be true for it to run.
     Qnn,
 }
 

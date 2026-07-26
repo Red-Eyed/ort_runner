@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Package built targets into distributable zips under dist/.
 
-Each zip is a self-contained, runnable ort_runner: just the binary plus the ONNX Runtime shared
-library bundled beside it (which is where dylib::resolve looks) -- no source.
+Each zip is a self-contained, runnable ort_runner: the binary plus the shared libraries it needs
+bundled beside it (which is where dylib::resolve and Android's runner look) -- no source.
 The version in the zip name is read from Cargo.toml, the single source of the project version.
 """
 
@@ -56,6 +56,9 @@ def package(target: Target) -> Path:
     with zipfile.ZipFile(zip_path, "w") as archive:
         _add_file(archive, binary, f"{stem}/ort_runner", executable=True)
         _add_file(archive, library, f"{stem}/{library.name}", executable=False)
+        extra_libraries = sorted(lib for lib in build_dir.glob("*.so") if lib.name != library.name)
+        for extra_library in extra_libraries:
+            _add_file(archive, extra_library, f"{stem}/{extra_library.name}", executable=False)
     print(zip_path)
     return zip_path
 
