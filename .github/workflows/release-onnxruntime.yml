@@ -28,7 +28,7 @@ jobs:
       reason: ${{ steps.check.outputs.reason }}
     steps:
       - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@v8
+      - uses: astral-sh/setup-uv@v8.3.2
       - id: check
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -50,7 +50,7 @@ jobs:
       ORT_RUNNER_CONTAINER_ENGINE: docker
     steps:
       - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@v8
+      - uses: astral-sh/setup-uv@v8.3.2
       # The repo's toolchain images are built for linux/arm64 even on x64 runners. QEMU is only
       # for image execution/build plumbing; the target binaries themselves are still cross-built
       # by Rust inside the image.

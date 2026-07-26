@@ -66,7 +66,7 @@ The check job is intentionally small and runs before any container images are bu
 
 ```yaml
 - uses: actions/checkout@v6
-- uses: astral-sh/setup-uv@v8
+- uses: astral-sh/setup-uv@v8.3.2
 - id: check
   env:
     GITHUB_TOKEN: ${{ github.token }}
