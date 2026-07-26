@@ -1,0 +1,113 @@
+name: Release ONNX Runtime Refresh
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-onnxruntime-refresh
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Check ONNX Runtime Release
+    # Only the repository owner should run this automation. GitHub may still create a visible
+    # workflow run for another actor, but job-level `if` is evaluated before a runner is assigned,
+    # so unauthorized runs do not execute scripts or receive a useful token.
+    if: ${{ github.repository_owner == 'Red-Eyed' && github.actor == 'Red-Eyed' }}
+    runs-on: ubuntu-latest
+    outputs:
+      release_needed: ${{ steps.check.outputs.release_needed }}
+      ort_version: ${{ steps.check.outputs.ort_version }}
+      tag: ${{ steps.check.outputs.tag }}
+      targets: ${{ steps.check.outputs.targets }}
+      reason: ${{ steps.check.outputs.reason }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - id: check
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: uv run scripts/check_onnxruntime_release.py
+
+  release:
+    name: Build And Release
+    needs: check
+    if: ${{ github.repository_owner == 'Red-Eyed' && github.actor == 'Red-Eyed' && needs.check.outputs.release_needed == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GITHUB_TOKEN: ${{ github.token }}
+      ORT_RUNNER_ORT_VERSION: ${{ needs.check.outputs.ort_version }}
+      # Local developer recipes default to Podman. GitHub-hosted runners already have a
+      # well-supported Docker stack, and Docker is what the BuildKit cache action integrates with.
+      ORT_RUNNER_CONTAINER_ENGINE: docker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      # The repo's toolchain images are built for linux/arm64 even on x64 runners. QEMU is only
+      # for image execution/build plumbing; the target binaries themselves are still cross-built
+      # by Rust inside the image.
+      - uses: docker/setup-qemu-action@v3
+      # build-push-action stores the expensive toolchain-image layers in GitHub's cache service.
+      # That is the part worth caching: the images install Rust, system linkers and the Android
+      # NDK, while the daily release check itself stays cheap and runs in the separate check job.
+      - uses: docker/setup-buildx-action@v3
+      - uses: actions/cache@v4
+        with:
+          # .cargo holds downloaded crate sources used by cargo --offline inside the containers.
+          # sdk is keyed by ORT version so a daily refresh does not re-download the same runtime.
+          # target can be large, but release builds are infrequent and reuse makes rebuilds much
+          # less punishing when a workflow is re-run after an infrastructure failure.
+          path: |
+            .cargo
+            sdk
+            target
+          key: release-ort-${{ runner.os }}-${{ needs.check.outputs.ort_version }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'podman/Containerfile.*') }}
+          restore-keys: |
+            release-ort-${{ runner.os }}-${{ needs.check.outputs.ort_version }}-
+            release-ort-${{ runner.os }}-
+      - name: Fetch Rust dependencies
+        run: |
+          # Container builds deliberately run cargo --offline. Populate the bind-mounted CARGO_HOME
+          # on the host first so fresh GitHub runners do not fail cold inside the toolchain image.
+          rustup toolchain install 1.97.0 --profile minimal
+          CARGO_HOME="${GITHUB_WORKSPACE}/.cargo" cargo +1.97.0 fetch --locked
+      - name: Build Linux Toolchain Image
+        if: contains(needs.check.outputs.targets, 'linux-')
+        uses: docker/build-push-action@v6
+        with:
+          context: podman
+          file: podman/Containerfile.linux
+          platforms: linux/arm64
+          load: true
+          tags: ort-runner-builder-linux
+          cache-from: type=gha,scope=ort-runner-builder-linux
+          cache-to: type=gha,mode=max,scope=ort-runner-builder-linux
+      - name: Build Android Toolchain Image
+        if: contains(needs.check.outputs.targets, 'android-')
+        uses: docker/build-push-action@v6
+        with:
+          context: podman
+          file: podman/Containerfile.android
+          platforms: linux/arm64
+          load: true
+          tags: ort-runner-builder-android
+          cache-from: type=gha,scope=ort-runner-builder-android
+          cache-to: type=gha,mode=max,scope=ort-runner-builder-android
+      - name: Build selected targets
+        run: |
+          # scripts/build.py fetches the selected ORT SDK, runs cargo in the cached toolchain image,
+          # then bundles libonnxruntime.so beside the binary before the smoke test/package steps.
+          for target in ${{ needs.check.outputs.targets }}; do
+            uv run scripts/build.py "$target"
+            uv run scripts/smoke.py "$target"
+          done
+      - name: Publish release
+        run: uv run scripts/release_onnxruntime.py ${{ needs.check.outputs.targets }}

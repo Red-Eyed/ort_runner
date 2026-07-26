@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Builds the podman toolchain image for a target ('linux' or 'android')."""
+"""Builds the containerized toolchain image for a target ('linux' or 'android')."""
 
 from __future__ import annotations
 
 import argparse
 import subprocess
 
-from targets import Target, resolve
+from targets import Target, container_engine, resolve
 
 
 def main() -> None:
@@ -14,12 +14,12 @@ def main() -> None:
     parser.add_argument("target", type=Target, choices=list(Target))
     args = parser.parse_args()
 
-    config = resolve(args.target)
     # Both Linux targets share one Containerfile and one multi-arch base image, so --platform
     # alone selects the architecture -- no per-arch base to keep in sync.
+    config = resolve(args.target)
     subprocess.run(
         [
-            "podman",
+            container_engine(),
             "build",
             "--platform",
             config.image_platform,

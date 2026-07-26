@@ -17,6 +17,7 @@ from enum import Enum
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+CONTAINER_ENGINE_ENV = "ORT_RUNNER_CONTAINER_ENGINE"
 
 # No linux-armv7 target: Microsoft publishes ONNX Runtime tarballs for linux-x64 and
 # linux-aarch64 only. With no prebuilt shared library for 32-bit ARM Linux there is nothing for
@@ -160,6 +161,18 @@ def resolve(target: Target) -> TargetConfig:
     return _CONFIGS[target]
 
 
+def container_engine() -> str:
+    """The container CLI used for builds and runs.
+
+    Podman stays the local default. GitHub Actions sets this to Docker so it can use the runner's
+    built-in container stack and BuildKit cache instead of installing Podman.
+    """
+    engine = os.environ.get(CONTAINER_ENGINE_ENV, "podman")
+    if engine not in {"podman", "docker"}:
+        raise SystemExit(f"error: {CONTAINER_ENGINE_ENV} must be 'podman' or 'docker'")
+    return engine
+
+
 # Cargo's network path hangs indefinitely inside these containers (0% CPU, blocked on a
 # socket) even though curl reaches index.crates.io fine. --offline sidesteps it entirely and is
 # correct anyway: every dependency is already vendored in the bind-mounted .cargo/registry, and
@@ -188,14 +201,14 @@ DEFAULT_TIMEOUT_SECONDS = 1800
 def _kill_container(name: str) -> None:
     """Stops a container the timeout gave up on.
 
-    Killing the podman *client* does not stop the container -- it keeps running detached, holding
-    memory and the CARGO_TARGET_DIR lock, so the next run inherits the mess. That is why the run
-    below is named: the name is the only handle left once the client is gone.
+    Killing the container CLI client does not stop the container -- it keeps running detached,
+    holding memory and the CARGO_TARGET_DIR lock, so the next run inherits the mess. That is why
+    the run below is named: the name is the only handle left once the client is gone.
     """
-    subprocess.run(["podman", "kill", name], check=False, capture_output=True)
+    subprocess.run([container_engine(), "kill", name], check=False, capture_output=True)
 
 
-def podman_exec(
+def container_exec(
     target: Target, command: list[str], timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS
 ) -> None:
     """Runs `command` inside `target`'s toolchain image, repo mounted at /workspace.
@@ -210,16 +223,22 @@ def podman_exec(
     rather than something each caller has to remember.
     """
     config = resolve(target)
+    engine = container_engine()
     image = config.image_tag
     platform_args = ["--platform", config.run_platform] if config.run_platform else []
     # Set here rather than in the image: it depends on the container's architecture, and one
     # Containerfile serves both Linux arches.
     target_dir_args = ["-e", f"CARGO_TARGET_DIR=/workspace/target/{config.image_tag}"]
+    workspace_mount = f"{REPO_ROOT}:/workspace"
+    if engine == "podman":
+        # Podman's SELinux label is harmless on machines that ignore it and necessary on hosts
+        # that enforce labels. Docker rejects the same suffix on macOS, so it is engine-specific.
+        workspace_mount = f"{workspace_mount}:Z"
     name = f"ort-runner-{target.value}-{os.getpid()}-{uuid.uuid4().hex[:8]}"
     try:
         subprocess.run(
             [
-                "podman",
+                engine,
                 "run",
                 "--rm",
                 "--name",
@@ -227,7 +246,7 @@ def podman_exec(
                 *platform_args,
                 *target_dir_args,
                 "-v",
-                f"{REPO_ROOT}:/workspace:Z",
+                workspace_mount,
                 "-w",
                 "/workspace",
                 image,
@@ -242,9 +261,16 @@ def podman_exec(
             f"timed out after {timeout_seconds}s and was killed:\n"
             f"    {' '.join(command)}\n"
             f"This is a hang, not slowness. Check what the container was blocked on with\n"
-            f"`podman ps` and `podman top <id>` while it runs -- a test binary sitting in\n"
+            f"`{engine} ps` and `{engine} top <id>` while it runs -- a test binary sitting in\n"
             f"futex_do_wait means it reached ONNX Runtime without a loaded library."
         ) from None
+
+
+def podman_exec(
+    target: Target, command: list[str], timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS
+) -> None:
+    """Compatibility wrapper for scripts that still import the original helper name."""
+    container_exec(target, command, timeout_seconds)
 
 
 def run_target_binary(target: Target, command: list[str]) -> None:
@@ -253,11 +279,11 @@ def run_target_binary(target: Target, command: list[str]) -> None:
     When the host can execute the target's binaries directly -- a native Linux host of the same
     arch, where the build container shares the host kernel -- this runs them in place, skipping
     container-start overhead. Otherwise (macOS, or a different-arch Linux host) it falls back to
-    podman_exec, which runs them inside the target's own build image.
+    container_exec, which runs them inside the target's own build image.
     """
     config = resolve(target)
     host_can_exec = platform.system() == "Linux" and platform.machine() == config.native_machine
     if host_can_exec:
         subprocess.run(command, check=True, cwd=REPO_ROOT)
     else:
-        podman_exec(target, command)
+        container_exec(target, command)

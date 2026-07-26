@@ -93,8 +93,8 @@ python3 scripts/run_android.py --source prebuilt android-arm64 model.onnx
 Or skip the repo entirely — unpack a release zip and run the binary directly:
 
 ```bash
-unzip ort_runner-v0.6.0-linux-aarch64-ort1.27.0.zip
-cd    ort_runner-v0.6.0-linux-aarch64-ort1.27.0
+unzip ort_runner-v0.6.0-linux-aarch64-ort1.28.0.zip
+cd    ort_runner-v0.6.0-linux-aarch64-ort1.28.0
 ./ort_runner --model model.onnx
 ```
 
@@ -265,9 +265,10 @@ own x86_64 toolchain, because `rustc` segfaults under QEMU.
 ## Honest limitations
 
 - **A demo and experimentation project**, not a published or battle-tested tool.
-- **There is no CI**; releases are cut from a developer machine with `just release`. Android
-  binaries are checked for ELF architecture and bundling at build time, but on-device runs are
-  manual.
+- **Release builds normally come from a developer machine with `just release`.** A scheduled
+  GitHub Actions workflow checks once a day for a newer ONNX Runtime release with Android AARs
+  available, then builds and publishes an ONNX Runtime refresh release automatically. On-device
+  Android runs are still manual.
 - **Memory figures cover this process only.** Under `--provider nnapi`, `webgpu` or `qnn`,
   allocations happen in a vendor HAL, a GPU driver or the Hexagon DSP where `/proc` cannot see
   them; the numbers are complete for `cpu` and `xnnpack`.

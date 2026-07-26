@@ -14,10 +14,10 @@ license = "MIT"
 # which fetches an ONNX Runtime build at compile time. That would break the hermetic
 # container builds and defeat shipping our own pinned .so.
 #
-# api-24 matches the pinned ONNX Runtime (1.27.x) and is what makes
-# `--graph-optimization-level layout` (ORT_ENABLE_LAYOUT) usable; compiling at a lower api
-# level would widen runtime compatibility we don't ship, at the cost of that flag failing at
-# runtime instead of at compile time.
+# api-24 is the newest API feature exposed by the pinned `ort` crate and is what makes
+# `--graph-optimization-level layout` (ORT_ENABLE_LAYOUT) usable. Newer ONNX Runtime shared
+# libraries still provide older C API versions, so this can run against the pinned runtime
+# while keeping the compile-time API surface the Rust binding supports.
 #
 # load-dynamic means nothing links against ONNX Runtime at build time: the .so is dlopen'd at
 # startup. That is what lets the Android/aarch64 cross-builds need only a linker, and what

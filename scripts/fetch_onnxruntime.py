@@ -16,6 +16,7 @@ Uses only the standard library, so it needs no extra packages installed to run.
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import sys
 import tarfile
@@ -26,7 +27,8 @@ from pathlib import Path
 
 from targets import REPO_ROOT, Target
 
-ORT_VERSION = "1.27.0"
+DEFAULT_ORT_VERSION = "1.28.0"
+ORT_VERSION = os.environ.get("ORT_RUNNER_ORT_VERSION", DEFAULT_ORT_VERSION)
 SDK_ROOT = REPO_ROOT / "sdk"
 
 _GITHUB_RELEASE = f"https://github.com/microsoft/onnxruntime/releases/download/v{ORT_VERSION}"
@@ -131,7 +133,7 @@ def _download(url: str, dest_file: Path) -> None:
 def _extract_tarball_strip1(archive: Path, dest: Path) -> None:
     """Unpack `archive` into `dest`, dropping the tarball's single top-level directory.
 
-    The tarball's top entry is named after the asset (e.g. onnxruntime-linux-aarch64-1.27.0/),
+    The tarball's top entry is named after the asset (e.g. onnxruntime-linux-aarch64-1.28.0/),
     not the fixed dest, so strip that first path component to land include/ and lib/ in dest.
     """
     dest.mkdir(parents=True, exist_ok=True)
@@ -165,7 +167,7 @@ def library_path(target: Target) -> Path:
     """The one libonnxruntime shared object to ship beside `target`'s binary.
 
     Resolved through symlinks and returned as a single real file. The Linux release tarball ships
-    a soname chain -- libonnxruntime.so -> .so.1 -> .so.1.27.0 -- and following each name
+    a soname chain -- libonnxruntime.so -> .so.1 -> .so.1.28.0 -- and following each name
     separately would put the same 20 MB payload into a zip three times, while a zip cannot carry
     the links themselves portably. One file, shipped under the plain `libonnxruntime.so` name that
     `dylib::resolve` looks for first, is all a runnable bundle needs.
