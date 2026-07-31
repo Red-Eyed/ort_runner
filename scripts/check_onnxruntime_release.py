@@ -41,11 +41,15 @@ class CheckResult:
     candidate: Candidate | None = None
 
 
-def _github_headers() -> dict[str, str]:
-    headers = {
+def _public_github_headers() -> dict[str, str]:
+    return {
         "Accept": "application/vnd.github+json",
         "User-Agent": "ort-runner-onnxruntime-release",
     }
+
+
+def _repository_github_headers() -> dict[str, str]:
+    headers = _public_github_headers()
     token = os.environ.get("GITHUB_TOKEN")
     if token:
         headers["Authorization"] = f"Bearer {token}"
@@ -53,7 +57,7 @@ def _github_headers() -> dict[str, str]:
 
 
 def _json(url: str) -> object:
-    request = urllib.request.Request(url, headers=_github_headers())
+    request = urllib.request.Request(url, headers=_public_github_headers())
     with urllib.request.urlopen(request, timeout=30) as response:
         return json.loads(response.read())
 
@@ -116,7 +120,7 @@ def _linux_targets_ready(version: str) -> tuple[Target, ...]:
         ),
     }
     for target, url in linux_assets.items():
-        if _exists(url, headers=_github_headers()):
+        if _exists(url):
             targets.append(target)
     return tuple(targets)
 
@@ -124,7 +128,7 @@ def _linux_targets_ready(version: str) -> tuple[Target, ...]:
 def _release_exists(repository: str, version: str) -> bool:
     tag = f"{RELEASE_TAG_PREFIX}{version}"
     url = f"https://api.github.com/repos/{repository}/releases/tags/{tag}"
-    return _exists(url, headers=_github_headers())
+    return _exists(url, headers=_repository_github_headers())
 
 
 def check(repository: str, minimum_version: str) -> CheckResult:
