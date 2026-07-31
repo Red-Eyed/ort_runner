@@ -208,6 +208,12 @@ def _kill_container(name: str) -> None:
     subprocess.run([container_engine(), "kill", name], check=False, capture_output=True)
 
 
+def _container_user_args(engine: str) -> list[str]:
+    if engine != "docker":
+        return []
+    return ["--user", f"{os.getuid()}:{os.getgid()}"]
+
+
 def container_exec(
     target: Target, command: list[str], timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS
 ) -> None:
@@ -226,6 +232,7 @@ def container_exec(
     engine = container_engine()
     image = config.image_tag
     platform_args = ["--platform", config.run_platform] if config.run_platform else []
+    user_args = _container_user_args(engine)
     # Set here rather than in the image: it depends on the container's architecture, and one
     # Containerfile serves both Linux arches.
     target_dir_args = ["-e", f"CARGO_TARGET_DIR=/workspace/target/{config.image_tag}"]
@@ -244,6 +251,7 @@ def container_exec(
                 "--name",
                 name,
                 *platform_args,
+                *user_args,
                 *target_dir_args,
                 "-v",
                 workspace_mount,
