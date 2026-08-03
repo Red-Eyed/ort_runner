@@ -77,7 +77,7 @@ benchmarking a phone.
 Grab everything and run it in one step:
 
 ```bash
-just run-android-arm64 model.onnx --dim batch=1
+just run android-arm64 model.onnx --dim batch=1
 ```
 
 That downloads the release for the target, pushes it to the connected device, and runs it. No
@@ -93,8 +93,8 @@ python3 scripts/run_android.py --source prebuilt android-arm64 model.onnx
 Or skip the repo entirely — unpack a release zip and run the binary directly:
 
 ```bash
-unzip ort_runner-v0.7.0-linux-aarch64-ort1.27.0.zip
-cd    ort_runner-v0.7.0-linux-aarch64-ort1.27.0
+unzip ort_runner-v0.7.0-linux-aarch64-ort1.28.0.zip
+cd    ort_runner-v0.7.0-linux-aarch64-ort1.28.0
 ./ort_runner --model model.onnx
 ```
 
@@ -184,7 +184,7 @@ QNN runtime libraries to the device beside `ort_runner` and `libonnxruntime.so`,
 `ADSP_LIBRARY_PATH` so the DSP can load its half:
 
 ```bash
-just run-android-arm64 model.onnx --provider qnn
+just run android-arm64 model.onnx --provider qnn
 ```
 
 For a custom source build or a nonstandard QNN runtime, `QNN_SDK_ROOT` and `--qnn-libs <dir>` are
@@ -223,7 +223,7 @@ ort_runner --model model.onnx --profile
 
 ```bash
 adb devices
-just run-android-arm64 model.onnx --dim batch=1 --provider nnapi
+just run android-arm64 model.onnx --dim batch=1 --provider nnapi
 ```
 
 The JSON report and any profiler trace are pulled back afterwards, landing in `reports/` and
@@ -245,18 +245,18 @@ Requires only [Podman](https://podman.io/) and [just](https://github.com/casey/j
 toolchain, no Android NDK, no C++ compiler on your machine — every build runs in a container.
 
 ```bash
-just build-linux-aarch64     # or linux-x64, android-arm64, android-armv7, android-x86_64
-just test                    # unit tests; needs no ONNX Runtime at all
-just check                   # clippy + unit tests + runtime-gated tests
-just run-dev-android-arm64 model.onnx    # run what you just built, not a release
+just dev build linux-aarch64            # or linux-x64, android-arm64, android-armv7, android-x86_64
+just test                               # unit tests; needs no ONNX Runtime at all
+just check                              # clippy + unit tests + runtime-gated tests
+just dev run android-arm64 model.onnx   # run what you just built, not a release
 ```
 
-The `run-*` recipes deliberately use released binaries; `run-dev-*` uses your local build. Which
-binary produced a measurement is never left implicit — a stale download beside a fresh build would
-otherwise attribute numbers to the wrong one.
+The root `run` recipe deliberately uses released binaries; `just dev run` uses your local build.
+Which binary produced a measurement is never left implicit — a stale download beside a fresh build
+would otherwise attribute numbers to the wrong one.
 
-Everything above lives in `dev.just`, leaving the Justfile itself to the `run-*` recipes that need
-no toolchain. It is imported rather than namespaced, so recipes are invoked the same either way.
+Developer commands live under `just dev`, leaving the Justfile itself to the release-run path that
+needs no toolchain.
 
 The pinned ONNX Runtime is fetched automatically on first build, and is always Microsoft's
 official prebuilt binary — never built from source.

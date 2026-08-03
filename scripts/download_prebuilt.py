@@ -17,13 +17,16 @@ and their first benchmark, and these are public assets that need no authenticati
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import shutil
 import sys
 import urllib.error
 import urllib.request
 import zipfile
+from collections.abc import Mapping
 from pathlib import Path
+from typing import TypedDict
 
 from targets import REPO_ROOT, Target, resolve
 
@@ -36,7 +39,19 @@ HEADERS = {"User-Agent": "ort_runner-download-prebuilt", "Accept": "application/
 DOWNLOAD_CACHE = REPO_ROOT / "prebuilt" / ".zips"
 
 
-def _get_json(url: str) -> dict:
+class ReleaseAsset(TypedDict):
+    name: str
+    browser_download_url: str
+
+
+class Release(TypedDict):
+    tag_name: str
+    draft: bool
+    prerelease: bool
+    assets: list[ReleaseAsset]
+
+
+def _get_json(url: str) -> object:
     request = urllib.request.Request(url, headers=HEADERS)
     try:
         with urllib.request.urlopen(request) as response:
@@ -52,25 +67,128 @@ def _get_json(url: str) -> dict:
         raise SystemExit(f"error: GitHub API request failed: {error}") from None
 
 
-def resolve_release(version: str) -> dict:
-    """The release payload for `version`, or the latest release when given "latest"."""
+def _asset_from_json(value: object) -> ReleaseAsset | None:
+    if not isinstance(value, Mapping):
+        return None
+
+    name = value.get("name")
+    download_url = value.get("browser_download_url")
+    if not isinstance(name, str) or not isinstance(download_url, str):
+        return None
+
+    return {"name": name, "browser_download_url": download_url}
+
+
+def _release_from_json(value: object) -> Release | None:
+    if not isinstance(value, Mapping):
+        return None
+
+    tag_name = value.get("tag_name")
+    draft = value.get("draft")
+    prerelease = value.get("prerelease")
+    assets = value.get("assets")
+    if (
+        not isinstance(tag_name, str)
+        or not isinstance(draft, bool)
+        or not isinstance(prerelease, bool)
+        or not isinstance(assets, list)
+    ):
+        return None
+
+    release_assets = [
+        asset for raw_asset in assets if (asset := _asset_from_json(raw_asset)) is not None
+    ]
+    return {
+        "tag_name": tag_name,
+        "draft": draft,
+        "prerelease": prerelease,
+        "assets": release_assets,
+    }
+
+
+@functools.lru_cache(maxsize=1)
+def _all_releases() -> list[Release]:
+    """Every public release GitHub returns on the first page."""
+    releases = _get_json(f"{API}?per_page=100")
+    if not isinstance(releases, list):
+        raise SystemExit("error: GitHub releases response was not a list")
+    return [
+        release
+        for raw_release in releases
+        if (release := _release_from_json(raw_release)) is not None
+    ]
+
+
+def _version_parts(version: str) -> tuple[int, ...] | None:
+    parts = version.split(".")
+    if not parts or any(not part.isdigit() for part in parts):
+        return None
+    return tuple(int(part) for part in parts)
+
+
+def _asset_versions(
+    asset: ReleaseAsset, target: Target
+) -> tuple[tuple[int, ...], tuple[int, ...]] | None:
+    name = asset["name"]
+    prefix = "ort_runner-v"
+    marker = f"-{target}-ort"
+    suffix = ".zip"
+    if not name.startswith(prefix) or marker not in name or not name.endswith(suffix):
+        return None
+
+    project_version, ort_version = name[len(prefix) : -len(suffix)].split(marker, maxsplit=1)
+    project_parts = _version_parts(project_version)
+    ort_parts = _version_parts(ort_version)
+    if project_parts is None or ort_parts is None:
+        return None
+    return project_parts, ort_parts
+
+
+def _target_assets(release: Release, target: Target) -> list[ReleaseAsset]:
+    marker = f"-{target}-"
+    return [asset for asset in release["assets"] if marker in asset["name"]]
+
+
+def _latest_release(target: Target) -> Release:
+    candidates: list[tuple[tuple[int, ...], tuple[int, ...], Release]] = []
+    for release in _all_releases():
+        if release["draft"] or release["prerelease"]:
+            continue
+        matches = _target_assets(release, target)
+        if len(matches) > 1:
+            asset_for(release, target)
+        if not matches:
+            continue
+        versions = _asset_versions(matches[0], target)
+        if versions is not None:
+            candidates.append((*versions, release))
+
+    if not candidates:
+        raise SystemExit(f"error: no release has a usable asset for {target}")
+    return max(candidates, key=lambda candidate: candidate[:2])[2]
+
+
+def resolve_release(version: str, target: Target) -> Release:
+    """The release payload for `version`, or the newest usable release for `target`."""
     if version == "latest":
-        return _get_json(f"{API}/latest")
-    tag = version if version.startswith("v") else f"v{version}"
-    return _get_json(f"{API}/tags/{tag}")
+        return _latest_release(target)
+    tag = version if version.startswith(("v", "onnxruntime-v")) else f"v{version}"
+    release = _release_from_json(_get_json(f"{API}/tags/{tag}"))
+    if release is None:
+        raise SystemExit(f"error: GitHub release response for {tag} was malformed")
+    return release
 
 
-def asset_for(release: dict, target: Target) -> dict:
+def asset_for(release: Release, target: Target) -> ReleaseAsset:
     """The release asset belonging to `target`.
 
     Matched on the target name delimited by dashes rather than by rebuilding the full asset
     name: the name also carries the ONNX Runtime version, which moves independently, so an exact
     match would break every time the runtime is bumped.
     """
-    marker = f"-{target}-"
-    matches = [asset for asset in release.get("assets", []) if marker in asset["name"]]
+    matches = _target_assets(release, target)
     if not matches:
-        names = sorted(asset["name"] for asset in release.get("assets", []))
+        names = sorted(asset["name"] for asset in release["assets"])
         available = ", ".join(names) or "none"
         raise SystemExit(
             f"error: release {release['tag_name']} has no asset for {target}\n"
@@ -122,7 +240,7 @@ def _unpack(archive: Path, destination: Path) -> None:
 def download(target: Target, version: str) -> Path:
     """Ensure `target`'s released binary is unpacked; return its directory."""
     destination = resolve(target).prebuilt_dir
-    release = resolve_release(version)
+    release = resolve_release(version, target)
     asset = asset_for(release, target)
 
     stamp = destination / ".release"

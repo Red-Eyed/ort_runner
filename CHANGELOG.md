@@ -4,6 +4,20 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.1] - 2026-08-03
+
+### Fixed
+
+- **`download-prebuilt` now resolves the newest usable prebuilt release**, rather than GitHub's
+  selected `/latest` release. This picks the newest `ort_runner` asset for the target, then the
+  newest ONNX Runtime refresh for that runner version.
+
+### Changed
+
+- **`just --list` now shows only the common commands.** Developer commands moved under
+  `just dev ...`, while the previous per-target recipe names remain as hidden compatibility
+  aliases.
+
 ## [0.7.0] - 2026-07-26
 
 ### Changed
@@ -240,6 +254,7 @@ changed is how the measurement is taken, what it reports about memory, and how y
 - Toolchain images obtain cmake and ninja from PyPI (in an isolated venv) so every target uses
   the same modern cmake regardless of the base distro's package age.
 
+[0.7.1]: https://github.com/Red-Eyed/ort_runner/releases/tag/v0.7.1
 [0.7.0]: https://github.com/Red-Eyed/ort_runner/releases/tag/v0.7.0
 [0.6.0]: https://github.com/Red-Eyed/ort_runner/releases/tag/v0.6.0
 [0.5.0]: https://github.com/Red-Eyed/ort_runner/releases/tag/v0.5.0
