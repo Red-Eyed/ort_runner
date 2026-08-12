@@ -18,6 +18,7 @@ filesystem, so they need no readelf/file tool and no container.
 from __future__ import annotations
 
 import argparse
+import platform
 from pathlib import Path
 
 from targets import REPO_ROOT, Target, resolve, run_target_binary
@@ -39,22 +40,31 @@ _EXPECTED_MACHINE: dict[Target, int] = {
 # gets the static checks only -- see scripts/run_android.py for the on-device run.
 _RUNTIME_SMOKE: set[Target] = {Target.LINUX_X64, Target.LINUX_ARM64}
 
-# ELF machine each container architecture can execute.
-_IMAGE_ARCH_MACHINE: dict[str, int] = {"amd64": _EM_X86_64, "arm64": _EM_AARCH64}
+# ELF machine names reported by container platforms and physical hosts.
+_PLATFORM_MACHINE: dict[str, int] = {
+    "aarch64": _EM_AARCH64,
+    "amd64": _EM_X86_64,
+    "arm64": _EM_AARCH64,
+    "x86_64": _EM_X86_64,
+}
 
 
-def _container_can_execute(target: Target) -> bool:
-    """Whether `target`'s own build image can run the binary it just produced.
+def _can_run_runtime_smoke(target: Target, host_machine: str) -> bool:
+    """Whether `target` can run natively in its build image on this host.
 
     Membership in `_RUNTIME_SMOKE` is not sufficient. The images are pinned to one architecture
     per Containerfile, so a cross-compiled binary for a different architecture cannot be executed
     in the container that produced it -- an x86_64 build out of the arm64 Linux image exits 255,
     exec format error, which reads as a broken build rather than an unrunnable combination.
 
-    Skipping is honest rather than lenient: the ELF and bundling checks still run, and those are
-    what a cross-compile actually gets wrong. Executing it needs a machine of that architecture.
+    The image must also run natively on the physical host. QEMU can execute some foreign binaries,
+    but ONNX Runtime may use architecture-specific features that QEMU does not reproduce reliably.
+    Skipping is honest rather than lenient: ELF and bundling checks still cover cross-build errors.
     """
-    return _IMAGE_ARCH_MACHINE.get(resolve(target).host_arch) == _EXPECTED_MACHINE[target]
+    expected = _EXPECTED_MACHINE[target]
+    image_machine = _PLATFORM_MACHINE.get(resolve(target).host_arch)
+    physical_machine = _PLATFORM_MACHINE.get(host_machine.lower())
+    return target in _RUNTIME_SMOKE and image_machine == expected == physical_machine
 
 
 def _fail(message: str) -> None:
@@ -86,7 +96,7 @@ def smoke(target: Target) -> None:
     if not bundled:
         _fail(f"onnxruntime shared library not bundled next to {binary}")
 
-    if target in _RUNTIME_SMOKE and _container_can_execute(target):
+    if _can_run_runtime_smoke(target, platform.machine()):
         run_target_binary(target, [f"{binary.relative_to(REPO_ROOT)}", "--version"])
         ran = "ran --version"
     else:
