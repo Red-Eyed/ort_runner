@@ -19,11 +19,11 @@ The important policy is Android first, Linux second:
 ```yaml
 on:
   schedule:
-    - cron: "17 3 * * *"
+    - cron: "17 * * * *"
   workflow_dispatch:
 ```
 
-The scheduled run is the cheap daily check. `workflow_dispatch` lets the same workflow be run
+The scheduled run is the cheap hourly check. `workflow_dispatch` lets the same workflow be run
 manually after an upstream release or Maven publication.
 
 ### Owner Guard, Permissions And Concurrency
